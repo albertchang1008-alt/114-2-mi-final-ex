@@ -254,7 +254,7 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
 </section>
 
 <!-- 閃卡 -->
-<section id="sec-flashcard" class="hidden flex-1 flex flex-col gap-4">
+<section id="sec-flashcard" class="hidden flex-1 flex flex-col gap-3">
   <div class="card p-4">
     <div class="flex items-center justify-between">
       <span id="fc-badge" class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#ede9fe;color:var(--primary);">🃏 閃卡</span>
@@ -268,22 +268,27 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
       <span>❌ <span id="fc-unknown">0</span></span>
     </div>
   </div>
-  <div class="fc-scene" id="fc-scene">
-    <div class="fc-inner" id="fc-inner">
-      <div class="fc-face fc-front">
-        <div id="fc-img-wrap" class="hidden mb-3 w-full rounded-xl overflow-hidden"><img id="fc-img" class="w-full" alt=""></div>
-        <p id="fc-q" class="text-center text-base font-semibold"></p>
+
+  <!-- ★ 方案 C：上下分層卡片 -->
+  <div class="card" style="overflow:hidden;">
+    <!-- 層 1：題目（永遠顯示）-->
+    <div id="fc-q-area" style="padding:16px 16px 14px;">
+      <div id="fc-img-wrap" class="hidden mb-3 w-full rounded-xl overflow-hidden"><img id="fc-img" class="w-full" alt=""></div>
+      <p id="fc-q" class="text-base font-semibold" style="color:var(--text1);line-height:1.6;"></p>
+    </div>
+    <!-- 層 2：選項 -->
+    <div id="fc-opts" style="padding:0 12px 12px;border-top:1px solid #e5e0d8;padding-top:12px;"></div>
+    <!-- 層 3：解析（選完後顯示）-->
+    <div id="fc-answer-area" class="hidden" style="border-top:1px solid #e5e0d8;padding:14px 16px;background:#f8f4ef;">
+      <div id="fc-result-badge" class="text-xs font-bold px-2 py-0.5 rounded-full inline-block mb-3"></div>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-xs font-bold" style="color:var(--text2);">正確答案</span>
+        <span id="fc-ans" class="text-sm font-black" style="color:var(--primary);"></span>
       </div>
-      <div class="fc-face fc-back">
-        <div class="text-center">
-          <div class="text-xs font-bold px-2 py-0.5 rounded-full inline-block mb-2" style="background:rgba(99,102,241,0.15);color:var(--primary);">正確答案</div>
-          <p id="fc-ans" class="text-base font-bold mb-3" style="color:var(--primary);"></p>
-          <p id="fc-exp" class="text-sm" style="color:var(--text2);"></p>
-        </div>
-      </div>
+      <p id="fc-exp" class="text-sm" style="color:var(--text2);line-height:1.6;"></p>
     </div>
   </div>
-  <div id="fc-opts" class="space-y-2 mt-1"></div>
+
   <button id="fc-next-btn" class="hidden btn-primary" onclick="fcNext()">下一題 →</button>
   <button onclick="goToMain()" class="text-sm text-center py-2" style="color:var(--text2);">離開閃卡</button>
 </section>
@@ -920,21 +925,23 @@ function launchFc(questions, label) {
 function renderFc() {
   fcPendingNext = null;
   hide("fc-next-btn");
+  hide("fc-answer-area");
   if(!fcDeck.length){ showSec("sec-fc-done"); document.getElementById("fc-done-known").textContent=fcKnown.length; document.getElementById("fc-done-unknown").textContent=0; return; }
-  const q=fcDeck[0];
-  document.getElementById("fc-remain").textContent=fcDeck.length;
-  document.getElementById("fc-q").textContent=q.q;
-  const iw=document.getElementById("fc-img-wrap");
-  if(q.isImage&&q.imgUrl){ document.getElementById("fc-img").src=q.imgUrl; iw.classList.remove("hidden"); }
+  const q = fcDeck[0];
+  document.getElementById("fc-remain").textContent = fcDeck.length;
+  document.getElementById("fc-q").textContent = q.q;
+  document.getElementById("fc-ans").textContent = q.ans || "";
+  document.getElementById("fc-exp").textContent = q.exp || "";
+  const iw = document.getElementById("fc-img-wrap");
+  if(q.isImage && q.imgUrl){ document.getElementById("fc-img").src = q.imgUrl; iw.classList.remove("hidden"); }
   else iw.classList.add("hidden");
-  document.getElementById("fc-ans").textContent=q.ans||"";
-  document.getElementById("fc-exp").textContent=q.exp||"";
-  document.getElementById("fc-scene").classList.remove("flipped");
-  const opts=document.getElementById("fc-opts"); opts.innerHTML="";
-  const shuffled=shuffle([...(q.options||[])]);
-  shuffled.forEach(opt=>{
-    const btn=document.createElement("button"); btn.className="opt-btn"; btn.textContent=opt;
-    btn.onclick=()=>fcSelect(btn,opt,q);
+  const opts = document.getElementById("fc-opts");
+  opts.innerHTML = "";
+  shuffle([...(q.options||[])]).forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "opt-btn"; btn.textContent = opt;
+    btn.style.marginBottom = "6px";
+    btn.onclick = () => fcSelect(btn, opt, q);
     opts.appendChild(btn);
   });
 }
@@ -946,7 +953,7 @@ function fcSelect(clicked, sel, q) {
   const cleanCorr = clean(q.ans||"");
   const ok = cleanSel === cleanCorr;
 
-  // ★ 用按鈕文字比對，不用索引，避免打亂順序後對錯
+  // 標記選項顏色
   document.querySelectorAll("#fc-opts .opt-btn").forEach(b => {
     const btnClean = clean(b.textContent);
     const isCorr = btnClean === cleanCorr;
@@ -957,9 +964,17 @@ function fcSelect(clicked, sel, q) {
     else               b.style.opacity = "0.4";
   });
 
-  document.getElementById("fc-scene").classList.add("flipped");
+  // ★ 方案 C：展開層 3（解析），不翻牌
+  const badge = document.getElementById("fc-result-badge");
+  if(ok){
+    badge.textContent = "✅ 答對！";
+    badge.style.cssText = "background:#d1fae5;color:#065f46;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;display:inline-block;margin-bottom:10px;";
+  } else {
+    badge.textContent = "❌ 答錯";
+    badge.style.cssText = "background:#fee2e2;color:#991b1b;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;display:inline-block;margin-bottom:10px;";
+  }
+  show("fc-answer-area");
 
-  // ★ 記錄結果，等學生手動點「下一題」
   fcPendingNext = { q, ok };
   show("fc-next-btn");
 }
@@ -969,6 +984,7 @@ function fcNext() {
   const { q, ok } = fcPendingNext;
   fcPendingNext = null;
   hide("fc-next-btn");
+  hide("fc-answer-area");
   fcDeck.shift();
   if (ok) { fcKnown.push(q); document.getElementById("fc-known").textContent = fcKnown.length; }
   else    { fcDeck.push(q);  document.getElementById("fc-unknown").textContent = fcDeck.length; }
