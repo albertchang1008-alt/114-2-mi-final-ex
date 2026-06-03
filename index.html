@@ -92,8 +92,11 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
   <div class="card px-6 py-6" style="border-radius:0;border-top:none;">
     <h2 class="text-xl font-bold mb-1">學生登入</h2>
     <p class="text-sm mb-5" style="color:var(--text2)">請使用學校 .edu.tw Google 帳號</p>
-    <div class="flex justify-center">
+    <div class="flex justify-center mb-2">
       <div id="google-signin-btn"></div>
+    </div>
+    <div class="text-center mt-2">
+      <button onclick="switchGoogleAccount()" class="text-xs underline" style="color:var(--text2);">使用其他帳號登入</button>
     </div>
     <p id="login-err" class="text-sm text-center mt-3 hidden" style="color:var(--danger)"></p>
   </div>
@@ -403,8 +406,15 @@ const showToast = (msg,dur=2500) => {
 };
 const closeModal = id => document.getElementById(id).classList.add("hidden");
 const postGAS = async payload => {
-  const res = await fetch(GAS_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-  const d = await res.json();
+  // ★ 不帶 Content-Type，避免 CORS preflight 問題
+  const res = await fetch(GAS_URL, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    redirect: "follow"
+  });
+  const text = await res.text();
+  let d;
+  try { d = JSON.parse(text); } catch(e) { throw new Error("回應格式錯誤，請確認 GAS URL 是否正確"); }
   if(d.status==="error") throw new Error(d.message||"GAS 錯誤");
   return d;
 };
@@ -449,9 +459,34 @@ window.addEventListener("DOMContentLoaded", async () => {
 // ── Google OAuth ──
 function initGoogleSignIn() {
   if(!window.google) { setTimeout(initGoogleSignIn, 200); return; }
-  google.accounts.id.initialize({ client_id:CLIENT_ID, callback:handleGoogleCallback, auto_select:false });
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: handleGoogleCallback,
+    auto_select: false,
+    cancel_on_tap_outside: false
+  });
   google.accounts.id.renderButton(document.getElementById("google-signin-btn"),
     { theme:"outline", size:"large", text:"signin_with", shape:"pill", width:280 });
+}
+
+function switchGoogleAccount() {
+  if(!window.google) return;
+  // 清除記住的帳號後重新初始化按鈕
+  google.accounts.id.disableAutoSelect();
+  const btn = document.getElementById("google-signin-btn");
+  btn.innerHTML = "";
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: handleGoogleCallback,
+    auto_select: false,
+    login_hint: ""
+  });
+  google.accounts.id.renderButton(btn,
+    { theme:"outline", size:"large", text:"signin_with", shape:"pill", width:280,
+      click_listener: () => { google.accounts.id.disableAutoSelect(); } });
+  // 開啟 Google 帳號切換頁
+  const loginUrl = "https://accounts.google.com/AddSession?continue=" + encodeURIComponent(location.href);
+  window.open(loginUrl, "_blank", "width=500,height=600");
 }
 
 function handleGoogleCallback(response) {
