@@ -91,7 +91,9 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
   </div>
   <div class="card px-6 py-6" style="border-radius:0;border-top:none;">
     <h2 class="text-xl font-bold mb-1">學生登入</h2>
-    <p class="text-sm mb-5" style="color:var(--text2)">請使用學校 .edu.tw Google 帳號</p>
+    <p class="text-sm mb-1" style="color:var(--text2)">請選擇學校帳號登入</p>
+    <p class="text-xs mb-1" style="color:var(--text2)">例如：<code style="background:#f0ece4;padding:1px 6px;border-radius:4px;font-size:11px;">s113510001@ctcn.edu.tw</code></p>
+    <p class="text-xs mb-4 font-semibold" style="color:#dc2626;">⚠️ 請勿使用私人 Gmail</p>
     <div class="flex justify-center mb-2">
       <div id="google-signin-btn"></div>
     </div>
@@ -282,6 +284,7 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
     </div>
   </div>
   <div id="fc-opts" class="space-y-2 mt-1"></div>
+  <button id="fc-next-btn" class="hidden btn-primary" onclick="fcNext()">下一題 →</button>
   <button onclick="goToMain()" class="text-sm text-center py-2" style="color:var(--text2);">離開閃卡</button>
 </section>
 
@@ -373,7 +376,7 @@ body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(
 
 <script>
 // ══════════════════════════════════
-const GAS_URL   = "https://script.google.com/macros/s/AKfycbyYUJsOv4sgP7Uw-uqEVtPTXxVnZ92KizOS5BmYjF5fqhTYVvVh0I69gAYm90Z6Z1Lp/exec";
+const GAS_URL   = "https://script.google.com/macros/s/AKfycbyVAPaCD2RQ8KosHwObW00L7m-foWVdxwonDn0ftL6cukWsq_Mkz2VVskRQ8-gRMftp/exec";
 const CLIENT_ID = "768847881639-oh5mkl8qh9ij2c4a2f4janarcsoebq48.apps.googleusercontent.com";
 
 // 狀態
@@ -390,6 +393,7 @@ let allQData    = [];
 // 閃卡狀態
 let fcDeck = [], fcKnown = [], fcCurrentTopic = "";
 let wfcQuestions = [];
+let fcPendingNext = null;  // ★ 翻牌後等待手動換題的資料
 
 // ── 工具 ──
 const show = id => document.getElementById(id)?.classList.remove("hidden");
@@ -841,6 +845,8 @@ function launchFc(questions, label) {
 }
 
 function renderFc() {
+  fcPendingNext = null;
+  hide("fc-next-btn");
   if(!fcDeck.length){ showSec("sec-fc-done"); document.getElementById("fc-done-known").textContent=fcKnown.length; document.getElementById("fc-done-unknown").textContent=0; return; }
   const q=fcDeck[0];
   document.getElementById("fc-remain").textContent=fcDeck.length;
@@ -879,12 +885,21 @@ function fcSelect(clicked, sel, q) {
   });
 
   document.getElementById("fc-scene").classList.add("flipped");
-  setTimeout(() => {
-    fcDeck.shift();
-    if (ok) { fcKnown.push(q); document.getElementById("fc-known").textContent = fcKnown.length; }
-    else    { fcDeck.push(q);  document.getElementById("fc-unknown").textContent = fcDeck.length; }
-    renderFc();
-  }, 1800);
+
+  // ★ 記錄結果，等學生手動點「下一題」
+  fcPendingNext = { q, ok };
+  show("fc-next-btn");
+}
+
+function fcNext() {
+  if (!fcPendingNext) return;
+  const { q, ok } = fcPendingNext;
+  fcPendingNext = null;
+  hide("fc-next-btn");
+  fcDeck.shift();
+  if (ok) { fcKnown.push(q); document.getElementById("fc-known").textContent = fcKnown.length; }
+  else    { fcDeck.push(q);  document.getElementById("fc-unknown").textContent = fcDeck.length; }
+  renderFc();
 }
 
 function restartFc() {
