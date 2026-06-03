@@ -437,7 +437,84 @@ const getColor = c => {
 };
 
 // ── 初始化 ──
+// ★ 偵測不支援的瀏覽器（LINE、FB、Instagram 內建瀏覽器）
+function checkBrowser() {
+  const ua  = navigator.userAgent;
+  const isLineApp = /Line\//i.test(ua);
+  const isFBApp   = /FBAN|FBAV/i.test(ua);
+  const isIGApp   = /Instagram/i.test(ua);
+  if (!isLineApp && !isFBApp && !isIGApp) return true;
+
+  const name    = isLineApp ? "LINE" : isFBApp ? "Facebook" : "Instagram";
+  const pageUrl = location.href;
+  const isAndroid = /Android/i.test(ua);
+  const isIOS     = /iPhone|iPad|iPod/i.test(ua);
+
+  // Android → 直接用 intent:// 跳 Chrome
+  if (isAndroid) {
+    const intentUrl = "intent://" + pageUrl.replace(/^https?:\/\//,"") +
+      "#Intent;scheme=https;package=com.android.chrome;end";
+    location.href = intentUrl;
+    // 若 2 秒後還在，代表 Chrome 未安裝，顯示提示
+    setTimeout(() => showOpenBrowserPage(name, pageUrl, isIOS), 2000);
+    return false;
+  }
+
+  // iOS → 嘗試跳 Chrome，2秒後若還在顯示複製頁
+  if (isIOS) {
+    const chromeUrl = "googlechrome://" + pageUrl.replace(/^https?:\/\//,"");
+    location.href = chromeUrl;
+    setTimeout(() => showOpenBrowserPage(name, pageUrl, true), 2000);
+    return false;
+  }
+
+  showOpenBrowserPage(name, pageUrl, false);
+  return false;
+}
+
+function showOpenBrowserPage(appName, pageUrl, showSafariNote) {
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;padding:32px 24px;background:#F4F1EA;
+      font-family:system-ui,sans-serif;text-align:center;">
+      <div style="font-size:56px;margin-bottom:16px;">🌐</div>
+      <h2 style="font-size:20px;font-weight:900;color:#1a1a2e;margin-bottom:8px;">
+        請用系統瀏覽器開啟
+      </h2>
+      <p style="font-size:14px;color:#6b7280;margin-bottom:4px;">
+        ${appName} 內建瀏覽器不支援 Google 登入
+      </p>
+      ${showSafariNote ? `<p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+        複製連結後貼到 <strong>Safari</strong> 或 <strong>Chrome</strong> 開啟</p>` :
+        `<p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+        正在嘗試開啟 Chrome...</p>`}
+      <div style="background:#fff;border:1px solid #e5e0d8;border-radius:12px;
+        padding:12px 16px;word-break:break-all;font-size:12px;color:#6366f1;
+        max-width:320px;margin-bottom:16px;">${pageUrl}</div>
+      <button onclick="
+        if(navigator.clipboard) {
+          navigator.clipboard.writeText('${pageUrl}').then(()=>{
+            this.textContent='✅ 已複製！';
+            this.style.background='#10b981';
+          });
+        } else {
+          const ta=document.createElement('textarea');
+          ta.value='${pageUrl}'; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy');
+          document.body.removeChild(ta);
+          this.textContent='✅ 已複製！'; this.style.background='#10b981';
+        }"
+        style="background:#6366f1;color:white;border:none;border-radius:14px;
+        padding:14px 28px;font-size:15px;font-weight:700;cursor:pointer;
+        width:100%;max-width:280px;margin-bottom:12px;transition:background 0.2s;">
+        📋 複製連結
+      </button>
+      <p style="font-size:12px;color:#9ca3af;">複製後貼到 Safari / Chrome 的網址列</p>
+    </div>`;
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
+  if (!checkBrowser()) return;
   try {
     const res = await fetch(GAS_URL + "?t=" + Date.now());
     const data = await res.json();
@@ -475,22 +552,18 @@ function initGoogleSignIn() {
 
 function switchGoogleAccount() {
   if(!window.google) return;
-  // 清除記住的帳號後重新初始化按鈕
   google.accounts.id.disableAutoSelect();
+  // 重新渲染按鈕，讓使用者可以選擇其他帳號
   const btn = document.getElementById("google-signin-btn");
   btn.innerHTML = "";
   google.accounts.id.initialize({
     client_id: CLIENT_ID,
     callback: handleGoogleCallback,
-    auto_select: false,
-    login_hint: ""
+    auto_select: false
   });
   google.accounts.id.renderButton(btn,
-    { theme:"outline", size:"large", text:"signin_with", shape:"pill", width:280,
-      click_listener: () => { google.accounts.id.disableAutoSelect(); } });
-  // 開啟 Google 帳號切換頁
-  const loginUrl = "https://accounts.google.com/AddSession?continue=" + encodeURIComponent(location.href);
-  window.open(loginUrl, "_blank", "width=500,height=600");
+    { theme:"outline", size:"large", text:"signin_with", shape:"pill", width:280 });
+  showToast("請點上方按鈕選擇學校帳號", 3000);
 }
 
 function handleGoogleCallback(response) {
