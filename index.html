@@ -455,17 +455,27 @@ function initGoogleSignIn() {
 }
 
 function handleGoogleCallback(response) {
-  const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-  const email   = payload.email?.toLowerCase() || "";
+  let payload;
+  try {
+    const b64 = response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    payload = JSON.parse(atob(padded));
+  } catch(e) {
+    const el = document.getElementById("login-err");
+    el.textContent = "Google 憑證解析失敗：" + e.message; el.classList.remove("hidden"); return;
+  }
+  const email = (payload.email || "").toLowerCase();
+  const errEl = document.getElementById("login-err");
   if(!email.includes(".edu.tw")) {
-    const e = document.getElementById("login-err");
-    e.textContent="請使用學校 .edu.tw 帳號登入"; e.classList.remove("hidden");
-    return;
+    errEl.textContent = "請使用學校 .edu.tw 帳號登入（目前：" + email + "）";
+    errEl.classList.remove("hidden"); return;
   }
   studentEmail = email;
-  document.getElementById("login-err").classList.add("hidden");
+  errEl.classList.add("hidden");
+  errEl.textContent = "🔄 驗證中..."; errEl.classList.remove("hidden");
   postGAS({ action:"getStudentProfile", email })
     .then(res => {
+      errEl.classList.add("hidden");
       if(res.exists) { completeLogin(res.studentId, res.name, email); }
       else {
         document.getElementById("reg-email-display").textContent = email;
@@ -475,8 +485,8 @@ function handleGoogleCallback(response) {
       }
     })
     .catch(e => {
-      const el=document.getElementById("login-err");
-      el.textContent=e.message||"登入失敗"; el.classList.remove("hidden");
+      errEl.textContent = "連線失敗：" + (e.message||"未知錯誤") + " — 請確認 GAS v10 已部署且權限設為「所有人」";
+      errEl.classList.remove("hidden");
     });
 }
 
