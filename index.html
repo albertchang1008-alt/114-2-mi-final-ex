@@ -860,29 +860,31 @@ function renderFc() {
   });
 }
 
-function fcSelect(clicked,sel,q) {
-  document.querySelectorAll("#fc-opts .opt-btn").forEach(b=>{b.onclick=null;});
-  const cleanSel =sel.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
-  const cleanCorr=(q.ans||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
-  const ok=cleanSel===cleanCorr;
-  const corrIdx=shuffle([...(q.options||[])].map((_,i)=>i)).find(i=>{
-    const o=(q.options||[])[i]||"";
-    return o.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ")===cleanCorr;
+function fcSelect(clicked, sel, q) {
+  document.querySelectorAll("#fc-opts .opt-btn").forEach(b => { b.onclick = null; });
+  const clean = s => (s||"").replace(/^([1-4]|[A-D])[.\-\u3001\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+  const cleanSel  = clean(sel);
+  const cleanCorr = clean(q.ans||"");
+  const ok = cleanSel === cleanCorr;
+
+  // ★ 用按鈕文字比對，不用索引，避免打亂順序後對錯
+  document.querySelectorAll("#fc-opts .opt-btn").forEach(b => {
+    const btnClean = clean(b.textContent);
+    const isCorr = btnClean === cleanCorr;
+    const isUser = b === clicked;
+    if (isUser && ok)  b.classList.add("opt-correct");
+    else if (isUser)   b.classList.add("opt-wrong");
+    else if (isCorr)   b.classList.add("opt-correct");
+    else               b.style.opacity = "0.4";
   });
-  document.querySelectorAll("#fc-opts .opt-btn").forEach((b,i)=>{
-    if(b===clicked&&ok) b.classList.add("opt-correct");
-    else if(b===clicked) b.classList.add("opt-wrong");
-    else if((q.options||[]).findIndex(o=>o.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ")===cleanCorr)===
-            Array.from(document.querySelectorAll("#fc-opts .opt-btn")).indexOf(b)) b.classList.add("opt-correct");
-    else b.style.opacity="0.4";
-  });
+
   document.getElementById("fc-scene").classList.add("flipped");
-  setTimeout(()=>{
+  setTimeout(() => {
     fcDeck.shift();
-    if(ok){ fcKnown.push(q); document.getElementById("fc-known").textContent=fcKnown.length; }
-    else{ fcDeck.push(q); document.getElementById("fc-unknown").textContent=fcDeck.length; }
+    if (ok) { fcKnown.push(q); document.getElementById("fc-known").textContent = fcKnown.length; }
+    else    { fcDeck.push(q);  document.getElementById("fc-unknown").textContent = fcDeck.length; }
     renderFc();
-  },1800);
+  }, 1800);
 }
 
 function restartFc() {
