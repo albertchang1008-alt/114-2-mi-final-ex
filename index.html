@@ -480,17 +480,10 @@
             <button onclick="closeFcModeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
         <div class="space-y-3 overflow-y-auto pr-1">
-            <button onclick="startAllFlashcards()"
-                class="w-full text-left flex items-center gap-4 border-2 border-sky-100 bg-sky-50 hover:border-sky-300 hover:bg-sky-100 rounded-xl px-4 py-4 transition">
-                <span class="text-2xl">📚</span>
-                <div>
-                    <p class="font-bold text-gray-800">全部閃卡</p>
-                    <p class="text-xs text-sky-600 mt-0.5">不分分類，直接複習所有題目</p>
-                </div>
-            </button>
-            <div>
-                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">依分類選擇</p>
-                <div id="fc-category-list" class="space-y-2"></div>
+            <div class="rounded-xl border-2 border-emerald-100 bg-emerald-50 px-4 py-4">
+                <p class="font-bold text-gray-800">選擇閃卡張數</p>
+                <p class="text-xs text-emerald-600 mt-0.5 font-semibold">系統自動平均分類，翻卡後可立即看答案與解析</p>
+                <div id="fc-count-buttons" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4"></div>
             </div>
         </div>
     </div>
@@ -2581,22 +2574,18 @@ async function startWrongFcQuiz() {
 // ══════════════════════════════════════════════
 //  閃卡模式選擇
 // ══════════════════════════════════════════════
-let fcModalTopic   = "";
-
 function openFlashcardModal() {
     const modal = document.getElementById("fc-mode-modal");
-    const list = document.getElementById("fc-category-list");
+    const list = document.getElementById("fc-count-buttons");
     if (list) {
-        list.innerHTML = topicsData.map(({ name, color }) => {
-            const isHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
-            const dotStyle = isHex ? `background:${color}` : "";
-            const dotClass = isHex ? "" : getTopicDotClass(color);
-            return `<button onclick="startCategoryFlashcard('${encodeURIComponent(name)}')"
-                class="w-full text-left flex items-center gap-3 border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl px-4 py-3 transition">
-                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}" style="${dotStyle}"></span>
-                <span class="font-bold text-gray-800">${analysisCell(name)}</span>
-            </button>`;
-        }).join("");
+        list.innerHTML = "";
+        [10, 20, 30, 50].forEach(count => {
+            const btn = document.createElement("button");
+            btn.className = "bg-white hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold py-3 rounded-lg transition";
+            btn.textContent = `${count} 張`;
+            btn.onclick = () => startCountFlashcards(count);
+            list.appendChild(btn);
+        });
     }
     modal.style.display = "flex";
 }
@@ -2618,12 +2607,59 @@ function closeFcModeModal() {
 
 async function startAllFlashcards() {
     closeFcModeModal();
-    await loadAndStartFlashcard("綜合練習");
+    await startCountFlashcards(50);
 }
 
 async function startCategoryFlashcard(topic) {
     closeFcModeModal();
-    await loadAndStartFlashcard(decodeURIComponent(topic));
+    await startCountFlashcards(30);
+}
+
+async function startCountFlashcards(count) {
+    closeFcModeModal();
+    currentSelectedTopic = "閃卡";
+    hide("topic-section");
+    show("flashcard-loading-section");
+    if (!(await verifySessionOnce())) return;
+    try {
+        const res = await postGAS({
+            action: "getQuizByCount",
+            count,
+            studentId,
+            name: studentName,
+            mode: "閃卡",
+            flashcard: true,
+            excludeIds: [...sessionAnsweredIds]
+        });
+        if (res.status !== "ok") throw new Error(res.message || "載入失敗");
+        const picked = res.data || [];
+        if (!picked.length) {
+            hide("flashcard-loading-section");
+            show("topic-section");
+            alert("目前沒有可複習的閃卡！");
+            return;
+        }
+        allQuestionsData = picked.map((item, idx) => ({
+            id: item.id || `Q_${idx}`,
+            top: item.top || "未分類",
+            q: item.q,
+            options: item.options || [],
+            color: item.color || "red",
+            isImage: item.isImage || false,
+            imgUrl: item.imgUrl || "",
+            questionType: item.questionType || "",
+            cogType: item.cogType || "",
+            ans: item.ans || "",
+            exp: item.exp || "",
+            source: item.source || "未作答",
+        }));
+        hide("flashcard-loading-section");
+        startFlashcard(allQuestionsData, `閃卡 ${picked.length} 張`);
+    } catch(e) {
+        hide("flashcard-loading-section");
+        show("topic-section");
+        alert("載入失敗：" + e.message);
+    }
 }
 
 // ══════════════════════════════════════════════
