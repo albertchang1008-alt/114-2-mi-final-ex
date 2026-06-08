@@ -1195,6 +1195,12 @@ function backToGoogleLogin() {
     initGoogleSignIn();
 }
 
+function hasOnlyUnknownTopic() {
+    return Array.isArray(topicsData) &&
+        topicsData.length === 1 &&
+        String(topicsData[0]?.name || "").trim() === "未分類";
+}
+
 async function completeLogin(idVal, nameVal, emailVal) {
     studentId = idVal;
     studentName = nameVal;
@@ -1410,11 +1416,12 @@ async function loadAndStartFlashcard(topic, skipSessionCheck = false) {
 
 // ★ 向 GAS 請求指定分類題目
 async function loadTopicQuestions(topic, flashcard) {
-    const res = await postGAS({ action: "getTopicQuestions", topic, flashcard: flashcard || false });
+    const requestTopic = topic === "未分類" && hasOnlyUnknownTopic() ? "綜合練習" : topic;
+    const res = await postGAS({ action: "getTopicQuestions", topic: requestTopic, flashcard: flashcard || false });
     if (res.status !== "ok") throw new Error(res.message || "載入失敗");
 
     let data = res.data || [];
-    if (topic === "綜合練習") data = shuffle([...data]).slice(0, 30);
+    if (requestTopic === "綜合練習") data = shuffle([...data]).slice(0, 30);
 
     allQuestionsData = data.map((item, idx) => ({
         id:      item.id      || `Q_${idx}`,
@@ -2629,6 +2636,9 @@ function closeComboModal() {
 async function startComboQuiz() {
     if (!(await verifySessionOnce())) return;
     const selectedTopics = [...document.querySelectorAll(".combo-topic-cb:checked")].map(cb => cb.value);
+    const requestTopics = selectedTopics.length === 1 && selectedTopics[0] === "未分類" && hasOnlyUnknownTopic()
+        ? []
+        : selectedTopics;
     const count = parseInt(document.getElementById("combo-count").value) || 30;
 
     if (selectedTopics.length === 0) {
@@ -2648,7 +2658,7 @@ async function startComboQuiz() {
     show("submitting-section");
 
     try {
-        const res = await postGAS({ action: "getQuizByCount", count, topics: selectedTopics });
+        const res = await postGAS({ action: "getQuizByCount", count, topics: requestTopics });
         if (res.status !== "ok") throw new Error(res.message || "載入失敗");
 
         const picked = res.data || [];
