@@ -1404,11 +1404,6 @@ function renderTopics() {
             btn.onclick = () => startCountQuiz(count);
             btnWrap.appendChild(btn);
         });
-        const nextBtn = document.createElement("button");
-        nextBtn.className = "bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition col-span-2 sm:col-span-1";
-        nextBtn.textContent = "下一組";
-        nextBtn.onclick = () => startCountQuiz(30);
-        btnWrap.appendChild(nextBtn);
     }, 0);
 
     const secondaryWrap = document.createElement("div");
