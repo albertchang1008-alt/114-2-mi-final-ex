@@ -364,7 +364,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-710">v1.71</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-713">v1.71</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -438,7 +438,7 @@
             </div>
             <div>
                 <label class="text-xs font-semibold text-gray-500 mb-1 block">最多題數（0＝不限）</label>
-                <input type="number" id="wfc-max-count" value="100" min="0"
+                <input type="number" id="wfc-max-count" value="100" min="0" onchange="loadWrongFcCount()"
                     class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300 text-center font-bold">
             </div>
         </div>
@@ -472,21 +472,24 @@
 <!--       閃卡模式選擇 Modal                  -->
 <!-- ══════════════════════════════════════════ -->
 <div id="fc-mode-modal" class="fixed inset-0 bg-black/40 z-50 items-center justify-center p-4" style="display:none;">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[88vh] flex flex-col">
         <div class="flex items-center justify-between mb-5">
             <h2 class="text-lg font-bold text-gray-800">🃏 閃卡複習</h2>
             <button onclick="closeFcModeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
-        <p id="fc-mode-topic" class="text-sm text-sky-600 font-semibold mb-4 bg-sky-50 px-3 py-1.5 rounded-lg"></p>
-        <div class="space-y-3">
-            <button onclick="startFcMode('all')"
-                class="w-full text-left flex items-center gap-4 border-2 border-gray-100 hover:border-sky-300 hover:bg-sky-50 rounded-xl px-4 py-4 transition">
+        <div class="space-y-3 overflow-y-auto pr-1">
+            <button onclick="startAllFlashcards()"
+                class="w-full text-left flex items-center gap-4 border-2 border-sky-100 bg-sky-50 hover:border-sky-300 hover:bg-sky-100 rounded-xl px-4 py-4 transition">
                 <span class="text-2xl">📚</span>
                 <div>
-                    <p class="font-bold text-gray-800">全部題目</p>
-                    <p class="text-xs text-gray-400 mt-0.5">複習此分類的所有題目</p>
+                    <p class="font-bold text-gray-800">全部閃卡</p>
+                    <p class="text-xs text-sky-600 mt-0.5">不分分類，直接複習所有題目</p>
                 </div>
             </button>
+            <div>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">依分類選擇</p>
+                <div id="fc-category-list" class="space-y-2"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -734,6 +737,7 @@
 // ★ 將此 URL 換成你的 GAS Webapp URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbyYUJsOv4sgP7Uw-uqEVtPTXxVnZ92KizOS5BmYjF5fqhTYVvVh0I69gAYm90Z6Z1Lp/exec';
 const CLIENT_ID = "768847881639-oh5mkl8qh9ij2c4a2f4janarcsoebq48.apps.googleusercontent.com";
+const ALLOWED_EMAIL_DOMAIN = "ctcn.edu.tw";
 
 // ★ v1.66 Session Token（只用於記錄，不再輪詢驗證）
 let sessionToken   = "";
@@ -1113,6 +1117,7 @@ function initGoogleSignIn() {
     }
     google.accounts.id.initialize({
         client_id: CLIENT_ID,
+        hd: ALLOWED_EMAIL_DOMAIN,
         callback: handleGoogleCallback,
         auto_select: false,
         cancel_on_tap_outside: false
@@ -1131,7 +1136,7 @@ function switchGoogleAccount() {
     google.accounts.id.disableAutoSelect();
     initGoogleSignIn();
     const errEl = document.getElementById("login-error");
-    showErr(errEl, "請重新點選 Google 按鈕選擇帳號");
+    showErr(errEl, "請在 Google 彈窗中選擇 @" + ALLOWED_EMAIL_DOMAIN + " 帳號；按鈕上顯示的預設帳號不代表最後登入帳號。");
 }
 
 function decodeJwtPayload(credential) {
@@ -1145,8 +1150,9 @@ async function handleGoogleCallback(response) {
     try {
         const profile = decodeJwtPayload(response.credential);
         const email = (profile.email || "").toLowerCase().trim();
-        if (!email || !email.includes(".edu.tw")) {
-            showErr(errEl, "請使用學校 .edu.tw 帳號登入（目前：" + (email || "未知") + "）");
+        if (!email || !email.endsWith("@" + ALLOWED_EMAIL_DOMAIN)) {
+            if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
+            showErr(errEl, "請使用 @" + ALLOWED_EMAIL_DOMAIN + " 帳號登入（目前：" + (email || "未知") + "）。請按「切換 Google 帳號」後選學校帳號。");
             return;
         }
         errEl.classList.add("hidden");
@@ -1283,13 +1289,19 @@ function renderTopics() {
     }
 
     const actionWrap = document.createElement("div");
-    actionWrap.className = "grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5";
+    actionWrap.className = "grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5";
 
     const comboBtn = document.createElement("button");
     comboBtn.className = "text-left bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl transition text-blue-800 font-bold";
     comboBtn.innerHTML = `<div class="text-base">🏆 綜合練習</div><div class="text-xs text-blue-500 mt-1 font-semibold">選分類與題數後開始作答</div>`;
     comboBtn.onclick = () => openComboModal();
     actionWrap.appendChild(comboBtn);
+
+    const flashcardBtn = document.createElement("button");
+    flashcardBtn.className = "text-left bg-emerald-50 border-2 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 p-4 rounded-xl transition text-emerald-800 font-bold";
+    flashcardBtn.innerHTML = `<div class="text-base">🃏 閃卡</div><div class="text-xs text-emerald-600 mt-1 font-semibold">全做或依分類複習</div>`;
+    flashcardBtn.onclick = () => openFlashcardModal();
+    actionWrap.appendChild(flashcardBtn);
 
     if (studentId) {
         const wrongFcBtn = document.createElement("button");
@@ -1299,70 +1311,6 @@ function renderTopics() {
         actionWrap.appendChild(wrongFcBtn);
     }
     div.appendChild(actionWrap);
-
-    const fcTitle = document.createElement("p");
-    fcTitle.className = "text-xs font-bold text-gray-400 uppercase tracking-wider mb-3";
-    fcTitle.textContent = "一般閃卡";
-    div.appendChild(fcTitle);
-
-    // 分類列表（列式，每列只進入閃卡）
-    console.log("📋 開始渲染", topicsData.length, "個閃卡分類");
-    topicsData.forEach(({ name: topic, color }, idx) => {
-        try {
-        const hex   = getColor(color);
-        const comp  = compMap[topic];
-        const row   = document.createElement("div");
-
-        // 分數標籤 HTML
-        let scoreBadge = "";
-        if (comp) {
-            if (comp.passed) {
-                scoreBadge = `<span style="background:#dcfce7;color:#166534;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;">✓ ${comp.best}分</span>`;
-            } else if (comp.best !== null && comp.best >= 60) {
-                scoreBadge = `<span style="background:#fef9c3;color:#854d0e;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;">${comp.best}分</span>`;
-            } else if (comp.best !== null) {
-                scoreBadge = `<span style="background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;">${comp.best}分</span>`;
-            } else {
-                scoreBadge = `<span style="color:#94a3b8;font-size:11px;">未作答</span>`;
-            }
-        }
-        // ★ v1.6 平均每題用時標籤
-        const avgSec = comp?.avgSec;
-        const timeLabel = avgSec != null
-            ? `<span style="font-size:10px;color:#64748b;margin-left:4px;">⏱ 均${avgSec}秒/題</span>`
-            : "";
-
-        // ★ 方案 C：未達標加閃卡提示文字（needsReview 必須在 borderColor 之前定義）
-        const needsReview = comp && !comp.passed && comp.best !== null;
-        const fcHint = needsReview
-            ? `<div style="font-size:10px;color:#dc2626;margin-top:3px;font-weight:600;">💡 建議閃卡複習</div>`
-            : "";
-        const borderColor = needsReview ? "rgba(239,68,68,0.35)" : hexToRgba(hex, 0.3);
-        row.style.cssText = `border:1.5px solid ${borderColor};border-radius:12px;overflow:hidden;background:white;`;
-
-        row.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;gap:8px;">
-                <div style="flex:1;min-width:0;overflow:hidden;">
-                    <div style="font-size:14px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topic}${timeLabel}</div>
-                    ${fcHint}
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-                    ${scoreBadge}
-                    <button class="fc-btn" data-topic="${topic}"
-                        style="background:${hexToRgba(hex,0.1)};color:${hex};border:1.5px solid ${hexToRgba(hex,0.25)};border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">
-                        閃卡
-                    </button>
-                </div>
-            </div>
-        `;
-        row.onclick = () => loadAndStartFlashcard(topic);
-        row.querySelector(".fc-btn").onclick = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
-        div.appendChild(row);
-        } catch(err) {
-            console.error("❌ 分類 " + idx + " (" + topic + ") 渲染失敗：", err);
-        }
-    });
-    console.log("✅ renderTopics 完成，渲染了", div.children.length, "個元素");
 }
 
 
@@ -1421,7 +1369,7 @@ async function loadTopicQuestions(topic, flashcard) {
     if (res.status !== "ok") throw new Error(res.message || "載入失敗");
 
     let data = res.data || [];
-    if (requestTopic === "綜合練習") data = shuffle([...data]).slice(0, 30);
+    if (requestTopic === "綜合練習" && !flashcard) data = shuffle([...data]).slice(0, 30);
 
     allQuestionsData = data.map((item, idx) => ({
         id:      item.id      || `Q_${idx}`,
@@ -2501,8 +2449,22 @@ async function startWrongFcQuiz() {
 // ══════════════════════════════════════════════
 let fcModalTopic   = "";
 
-function openFlashcardModal(topic) {
-    loadAndStartFlashcard(topic);
+function openFlashcardModal() {
+    const modal = document.getElementById("fc-mode-modal");
+    const list = document.getElementById("fc-category-list");
+    if (list) {
+        list.innerHTML = topicsData.map(({ name, color }) => {
+            const isHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
+            const dotStyle = isHex ? `background:${color}` : "";
+            const dotClass = isHex ? "" : getTopicDotClass(color);
+            return `<button onclick="startCategoryFlashcard('${encodeURIComponent(name)}')"
+                class="w-full text-left flex items-center gap-3 border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl px-4 py-3 transition">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}" style="${dotStyle}"></span>
+                <span class="font-bold text-gray-800">${analysisCell(name)}</span>
+            </button>`;
+        }).join("");
+    }
+    modal.style.display = "flex";
 }
 
 // 時間範圍標籤工具
@@ -2520,9 +2482,14 @@ function closeFcModeModal() {
     document.getElementById("fc-mode-modal").style.display = "none";
 }
 
-async function startFcMode(mode) {
+async function startAllFlashcards() {
     closeFcModeModal();
-    await loadAndStartFlashcard(fcModalTopic);
+    await loadAndStartFlashcard("綜合練習");
+}
+
+async function startCategoryFlashcard(topic) {
+    closeFcModeModal();
+    await loadAndStartFlashcard(decodeURIComponent(topic));
 }
 
 // ══════════════════════════════════════════════
@@ -2543,29 +2510,8 @@ function openComboModal() {
     const modal = document.getElementById("combo-modal");
     modal.style.display = "flex";
 
-    // ★ 認知類型快速篩選（點擊後只勾選該類型的分類）
-    const cogTypes = [...new Set(topicsData.map(t => {
-        // 需從 allQuestionsData 找對應認知類型（若已載入）
-        return ""; // 先從分類資料中無法直接取得，建立後更新
-    }).filter(Boolean))];
-
-    // 從 allQuestionsData 收集每個分類對應的認知類型
-    const topicCogMap = {}; // topic → Set of cogTypes
-    allQuestionsData.forEach(q => {
-        if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
-        if (q.cogType) topicCogMap[q.top].add(q.cogType);
-    });
-    const allCogTypes = [...new Set(allQuestionsData.map(q => q.cogType).filter(Boolean))].sort();
-
     const cogFilterEl = document.getElementById("combo-cog-filter");
-    cogFilterEl.innerHTML = allCogTypes.length === 0 ? "" : `
-        <span class="text-xs text-gray-400 self-center">依認知類型快速篩選：</span>
-        ${allCogTypes.map(cog => `
-        <button onclick="comboFilterByCog('${cog}')"
-            class="text-xs px-2.5 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition">
-            ${cog}
-        </button>`).join("")}
-    `;
+    if (cogFilterEl) cogFilterEl.innerHTML = "";
 
     // 渲染分類勾選列表（預設全選）
     const list = document.getElementById("combo-topic-list");
@@ -2573,16 +2519,11 @@ function openComboModal() {
         const isHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
         const dotStyle = isHex ? `background:${color}` : "";
         const dotClass = isHex ? "" : getTopicDotClass(color);
-        const cogSet   = topicCogMap[name];
-        const cogTag   = cogSet?.size > 0
-            ? [...cogSet].map(c => `<span class="text-xs text-violet-500">${c}</span>`).join(" · ")
-            : "";
         return `<label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2.5 hover:bg-gray-50 cursor-pointer transition">
             <input type="checkbox" class="combo-topic-cb w-4 h-4 rounded accent-sky-500" value="${name}" checked>
             <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}" style="${dotStyle}"></span>
             <span class="flex-1 min-w-0">
                 <span class="text-sm text-gray-700 block">${name}</span>
-                ${cogTag ? `<span class="text-xs text-violet-500">${cogTag}</span>` : ""}
             </span>
         </label>`;
     }).join("");
