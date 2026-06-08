@@ -131,6 +131,7 @@
         <div id="google-signin-btn" class="flex justify-center mb-4"></div>
         <button id="switch-google-btn" onclick="switchGoogleAccount()" class="w-full text-sm font-bold py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 mb-4">切換 Google 帳號</button>
         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></p>
+        <div id="campus-countdown-login" class="hidden mt-5 grid grid-cols-1 gap-2"></div>
     </section>
 
     <section id="register-section" class="hidden mobile-card p-6 md:p-10 mx-auto max-w-md">
@@ -166,6 +167,7 @@
                 <span class="text-base flex-shrink-0">🃏</span>
                 <p class="text-xs text-green-700 font-semibold leading-relaxed">選擇綜合練習或閃卡；錯題閃卡已獨立成專用功能。</p>
             </div>
+            <div id="campus-countdown-topic" class="hidden grid grid-cols-1 md:grid-cols-2 gap-2 mb-3"></div>
             <!-- 完成度進度條（有完成度設定時才顯示）-->
             <div id="my-completion-summary" class="hidden bg-sky-50 rounded-xl p-3 border border-sky-100">
                 <div class="flex items-center justify-between mb-2">
@@ -364,7 +366,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-713">v1.71</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-714">v1.71</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -682,6 +684,24 @@
                     </div>
                 </div>
 
+                <!-- 校區倒數設定 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-gray-700 mb-3">校區作答倒數時間</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                            <label class="block text-xs font-bold text-gray-500 mb-2">新店校區截止時間</label>
+                            <input type="datetime-local" id="settings-deadline-xindian"
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                        </div>
+                        <div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                            <label class="block text-xs font-bold text-gray-500 mb-2">宜蘭校區截止時間</label>
+                            <input type="datetime-local" id="settings-deadline-yilan"
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">時間會顯示在學生入口，倒數精確到秒。</p>
+                </div>
+
                 <!-- 分類勾選 -->
                 <div class="mb-6">
                     <div class="flex items-center justify-between mb-3">
@@ -824,67 +844,102 @@ async function verifySessionOnce() {
     return true;
 }
 
-// ★ v1.3 倒數計時器
+// 校區倒數計時器
 let deadlineTimer = null;
+let campusDeadlineState = [];
 
-function initDeadline(deadlineStr) {
-    if (!deadlineStr) return;
-    const deadlineTime = new Date(deadlineStr.replace(/\//g, '-'));
-    if (isNaN(deadlineTime)) return;
+function parseDeadlineDate(value) {
+    if (!value) return null;
+    const s = String(value).trim().replace(/\//g, "-").replace(" ", "T");
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+}
 
-    const bar      = document.getElementById("deadline-bar");
-    const spacer   = document.getElementById("deadline-spacer");
-    const icon     = document.getElementById("deadline-icon");
-    const label    = document.getElementById("deadline-label");
-    const countdown = document.getElementById("deadline-countdown");
+function formatDeadlineInput(value) {
+    const d = parseDeadlineDate(value);
+    if (!d) return "";
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
-    bar.classList.remove("hidden");
-    spacer.classList.remove("hidden");
+function formatCountdown(diff) {
+    const days = Math.floor(diff / (1000*60*60*24));
+    const hours = Math.floor((diff % (1000*60*60*24)) / (1000*60*60));
+    const minutes = Math.floor((diff % (1000*60*60)) / (1000*60));
+    const seconds = Math.floor((diff % (1000*60)) / 1000);
+    if (days > 0) return `${days} 天 ${String(hours).padStart(2,"0")} 時 ${String(minutes).padStart(2,"0")} 分 ${String(seconds).padStart(2,"0")} 秒`;
+    return `${String(hours).padStart(2,"0")} 時 ${String(minutes).padStart(2,"0")} 分 ${String(seconds).padStart(2,"0")} 秒`;
+}
+
+function renderCampusCountdown(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const active = campusDeadlineState.filter(c => c.date);
+    if (!active.length) {
+        el.classList.add("hidden");
+        el.innerHTML = "";
+        return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = active.map(c => `
+        <div class="campus-countdown-card rounded-xl border px-4 py-3 bg-indigo-50 border-indigo-100" data-campus="${c.key}">
+            <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-black text-indigo-800">${c.label}</span>
+                <span class="campus-countdown-status text-xs font-bold text-indigo-500">距截止</span>
+            </div>
+            <div class="campus-countdown-time mt-1 font-mono text-lg font-black text-indigo-900 tracking-wide">--</div>
+        </div>
+    `).join("");
+}
+
+function initCampusDeadlines(deadlines) {
+    clearInterval(deadlineTimer);
+    deadlines = deadlines || {};
+    campusDeadlineState = [
+        { key: "xindian", label: "新店校區", date: parseDeadlineDate(deadlines.xindian || "") },
+        { key: "yilan", label: "宜蘭校區", date: parseDeadlineDate(deadlines.yilan || "") }
+    ];
+    renderCampusCountdown("campus-countdown-login");
+    renderCampusCountdown("campus-countdown-topic");
+    const oldBar = document.getElementById("deadline-bar");
+    const oldSpacer = document.getElementById("deadline-spacer");
+    if (oldBar) oldBar.classList.add("hidden");
+    if (oldSpacer) oldSpacer.classList.add("hidden");
 
     function update() {
-        const now  = new Date();
-        const diff = deadlineTime - now;
-
-        if (diff <= 0) {
-            // 已截止
-            bar.style.background = "#991b1b";
-            icon.textContent     = "🔒";
-            label.textContent    = "作答時間已結束";
-            countdown.textContent = "";
-            clearInterval(deadlineTimer);
-            return;
-        }
-
-        const days    = Math.floor(diff / (1000*60*60*24));
-        const hours   = Math.floor((diff % (1000*60*60*24)) / (1000*60*60));
-        const minutes = Math.floor((diff % (1000*60*60)) / (1000*60));
-        const seconds = Math.floor((diff % (1000*60)) / 1000);
-
-        // 顏色隨剩餘時間變化
-        if (days === 0 && hours < 2) {
-            bar.style.background = "#991b1b"; // 快截止：紅色
-            icon.textContent = "🔴";
-        } else if (days === 0) {
-            bar.style.background = "#92400e"; // 當天：橘色
-            icon.textContent = "🟠";
-        } else if (days <= 3) {
-            bar.style.background = "#1e3a5f"; // 3天內：深藍
-            icon.textContent = "⏰";
-        } else {
-            bar.style.background = "#1e1b4b"; // 正常：深紫
-            icon.textContent = "⏳";
-        }
-
-        label.textContent = "距截止還有";
-        if (days > 0) {
-            countdown.textContent = `${days} 天 ${String(hours).padStart(2,'0')} 時 ${String(minutes).padStart(2,'0')} 分 ${String(seconds).padStart(2,'0')} 秒`;
-        } else {
-            countdown.textContent = `${String(hours).padStart(2,'0')} 時 ${String(minutes).padStart(2,'0')} 分 ${String(seconds).padStart(2,'0')} 秒`;
-        }
+        const now = new Date();
+        campusDeadlineState.forEach(c => {
+            if (!c.date) return;
+            document.querySelectorAll(`.campus-countdown-card[data-campus="${c.key}"]`).forEach(card => {
+                const timeEl = card.querySelector(".campus-countdown-time");
+                const statusEl = card.querySelector(".campus-countdown-status");
+                const diff = c.date - now;
+                card.className = "campus-countdown-card rounded-xl border px-4 py-3";
+                if (diff <= 0) {
+                    card.classList.add("bg-red-50", "border-red-200");
+                    statusEl.textContent = "已截止";
+                    statusEl.className = "campus-countdown-status text-xs font-bold text-red-600";
+                    timeEl.textContent = "作答時間已結束";
+                    timeEl.className = "campus-countdown-time mt-1 font-mono text-lg font-black text-red-700 tracking-wide";
+                } else {
+                    const hours = diff / (1000*60*60);
+                    if (hours < 2) card.classList.add("bg-red-50", "border-red-200");
+                    else if (hours < 24) card.classList.add("bg-amber-50", "border-amber-200");
+                    else card.classList.add("bg-indigo-50", "border-indigo-100");
+                    statusEl.textContent = "距截止";
+                    statusEl.className = "campus-countdown-status text-xs font-bold text-indigo-500";
+                    timeEl.textContent = formatCountdown(diff);
+                    timeEl.className = "campus-countdown-time mt-1 font-mono text-lg font-black text-indigo-900 tracking-wide";
+                }
+            });
+        });
     }
-
     update();
     deadlineTimer = setInterval(update, 1000);
+}
+
+function initDeadline(deadlineStr) {
+    initCampusDeadlines({ xindian: deadlineStr, yilan: "" });
 }
 
 // ★ v1.3 更新成績總表
@@ -915,6 +970,10 @@ let isLoggedIn         = false;  // ★ v1.5 登入狀態旗標
 let quizStartTime      = 0;       // ★ v1.6 測驗開始時間
 let currentSelectedTopic = "";
 let quizSession        = [];   // 當前測驗題目（含學生作答）
+let currentBatchId     = "";
+let currentQuestionBankVersion = "";
+let currentSettingsVersion = "";
+let sessionAnsweredIds = new Set();
 let currentQuestionIndex = 0;
 let attemptCount       = 0;
 let isRetryMode        = false;
@@ -976,8 +1035,8 @@ async function fetchQuestionBank() {
         completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
         allClassList       = result.allClassList || [];
 
-        // ★ v1.3 初始化倒數計時器
-        if (result.deadline) initDeadline(result.deadline);
+        // 校區倒數計時器
+        initCampusDeadlines(result.campusDeadlines || completionSettings.campusDeadlines || { xindian: result.deadline || "", yilan: "" });
 
         hide("loading-section");
         show("login-section");
@@ -1145,22 +1204,59 @@ function decodeJwtPayload(credential) {
     return JSON.parse(atob(padded));
 }
 
+let loginTimerA = null;
+let loginTimerB = null;
+
+function setLoginBusy(message) {
+    const errEl = document.getElementById("login-error");
+    const googleBtn = document.getElementById("google-signin-btn");
+    const switchBtn = document.getElementById("switch-google-btn");
+    if (errEl) {
+        errEl.textContent = message || "正在登入，請稍候...";
+        errEl.className = "text-blue-600 text-sm mt-3 text-center font-semibold";
+        errEl.classList.remove("hidden");
+    }
+    if (googleBtn) googleBtn.classList.add("opacity-50", "pointer-events-none");
+    if (switchBtn) switchBtn.disabled = true;
+    clearTimeout(loginTimerA);
+    clearTimeout(loginTimerB);
+    loginTimerA = setTimeout(() => {
+        if (errEl && !isLoggedIn) errEl.textContent = "系統正在連線，請不要關閉頁面...";
+    }, 5000);
+    loginTimerB = setTimeout(() => {
+        if (errEl && !isLoggedIn) errEl.textContent = "Google Apps Script 回應較慢，仍在嘗試登入...";
+    }, 12000);
+}
+
+function clearLoginBusy() {
+    clearTimeout(loginTimerA);
+    clearTimeout(loginTimerB);
+    const googleBtn = document.getElementById("google-signin-btn");
+    const switchBtn = document.getElementById("switch-google-btn");
+    if (googleBtn) googleBtn.classList.remove("opacity-50", "pointer-events-none");
+    if (switchBtn) switchBtn.disabled = false;
+}
+
 async function handleGoogleCallback(response) {
     const errEl = document.getElementById("login-error");
     try {
+        setLoginBusy("已選定 Google 帳號，正在登入...");
         const profile = decodeJwtPayload(response.credential);
         const email = (profile.email || "").toLowerCase().trim();
         if (!email || !email.endsWith("@" + ALLOWED_EMAIL_DOMAIN)) {
+            clearLoginBusy();
             if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
             showErr(errEl, "請使用 @" + ALLOWED_EMAIL_DOMAIN + " 帳號登入（目前：" + (email || "未知") + "）。請按「切換 Google 帳號」後選學校帳號。");
             return;
         }
-        errEl.classList.add("hidden");
+        setLoginBusy("帳號驗證中，請稍候...");
         const res = await postGAS({ action: "getStudentProfile", email });
         if (res.status !== "ok") throw new Error(res.message || "帳號驗證失敗");
         if (res.exists) {
+            setLoginBusy("正在建立登入狀態...");
             await completeLogin(res.studentId, res.name, email);
         } else {
+            clearLoginBusy();
             studentEmail = email;
             document.getElementById("reg-email-display").textContent = email;
             document.getElementById("reg-name-input").value = profile.name || "";
@@ -1169,6 +1265,7 @@ async function handleGoogleCallback(response) {
             setTimeout(() => document.getElementById("reg-name-input").focus(), 100);
         }
     } catch(e) {
+        clearLoginBusy();
         showErr(errEl, "Google 登入失敗：" + e.message);
     }
 }
@@ -1218,6 +1315,7 @@ async function completeLogin(idVal, nameVal, emailVal) {
     }
     postGAS({ action: "recordLogin", studentId, name: studentName, email: studentEmail }).catch(() => {});
     isLoggedIn = true;
+    clearLoginBusy();
     document.getElementById("display-user-name").textContent = studentName;
     hide("login-section");
     hide("register-section");
@@ -1289,27 +1387,54 @@ function renderTopics() {
     }
 
     const actionWrap = document.createElement("div");
-    actionWrap.className = "grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5";
+    actionWrap.className = "space-y-4 mb-5";
 
-    const comboBtn = document.createElement("button");
-    comboBtn.className = "text-left bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl transition text-blue-800 font-bold";
-    comboBtn.innerHTML = `<div class="text-base">🏆 綜合練習</div><div class="text-xs text-blue-500 mt-1 font-semibold">選分類與題數後開始作答</div>`;
-    comboBtn.onclick = () => openComboModal();
-    actionWrap.appendChild(comboBtn);
+    const practicePanel = document.createElement("div");
+    practicePanel.className = "bg-blue-50 border-2 border-blue-200 rounded-xl p-4";
+    practicePanel.innerHTML = `
+        <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+                <div class="text-base text-blue-800 font-bold">🏆 綜合練習</div>
+                <div class="text-xs text-blue-500 mt-1 font-semibold">系統自動平均分類出題，優先安排未作答題</div>
+            </div>
+        </div>
+        <div id="practice-count-buttons" class="grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
+    `;
+    actionWrap.appendChild(practicePanel);
+    setTimeout(() => {
+        const btnWrap = document.getElementById("practice-count-buttons");
+        if (!btnWrap) return;
+        [10, 20, 30, 50].forEach(count => {
+            const btn = document.createElement("button");
+            btn.className = "bg-white hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold py-3 rounded-lg transition";
+            btn.textContent = `${count} 題`;
+            btn.onclick = () => startCountQuiz(count);
+            btnWrap.appendChild(btn);
+        });
+        const nextBtn = document.createElement("button");
+        nextBtn.className = "bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition col-span-2 sm:col-span-1";
+        nextBtn.textContent = "下一組";
+        nextBtn.onclick = () => startCountQuiz(30);
+        btnWrap.appendChild(nextBtn);
+    }, 0);
+
+    const secondaryWrap = document.createElement("div");
+    secondaryWrap.className = "grid grid-cols-1 sm:grid-cols-2 gap-3";
 
     const flashcardBtn = document.createElement("button");
     flashcardBtn.className = "text-left bg-emerald-50 border-2 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 p-4 rounded-xl transition text-emerald-800 font-bold";
     flashcardBtn.innerHTML = `<div class="text-base">🃏 閃卡</div><div class="text-xs text-emerald-600 mt-1 font-semibold">全做或依分類複習</div>`;
     flashcardBtn.onclick = () => openFlashcardModal();
-    actionWrap.appendChild(flashcardBtn);
+    secondaryWrap.appendChild(flashcardBtn);
 
     if (studentId) {
         const wrongFcBtn = document.createElement("button");
         wrongFcBtn.className = "text-left bg-rose-50 border-2 border-rose-200 hover:border-rose-400 hover:bg-rose-100 p-4 rounded-xl transition text-rose-800 font-bold";
         wrongFcBtn.innerHTML = `<div class="text-base">🃏 錯題閃卡</div><div class="text-xs text-rose-500 mt-1 font-semibold">獨立複習歷史錯題</div>`;
         wrongFcBtn.onclick = () => openWrongFcModal();
-        actionWrap.appendChild(wrongFcBtn);
+        secondaryWrap.appendChild(wrongFcBtn);
     }
+    actionWrap.appendChild(secondaryWrap);
     div.appendChild(actionWrap);
 }
 
@@ -1411,6 +1536,7 @@ function prepareQuiz(sources) {
         imgUrl:         src.imgUrl  || "",
         questionType:   src.questionType || "",
         cogType:        src.cogType || "",  // ★ 認知類型
+        source:         src.source || "未作答",
         userSelectedIndex:   null,
         isCorrectlyAnswered: false,
         serverCorrectText:   "",
@@ -1535,6 +1661,7 @@ async function submitQuiz() {
                 q.serverExp           = r.exp || "尚無解析";
                 if (r.correct) scoreCorrect++;
             }
+            sessionAnsweredIds.add(q.id);
         });
 
         hide("submitting-section");
@@ -1596,17 +1723,21 @@ function showResults(scoreCorrect) {
         questionId:   q.id,
         questionText: q.q,
         topic:        q.top,
+        order:        quizSession.indexOf(q) + 1,
         selectedText: q.shuffledOpts[q.userSelectedIndex] ?? "未作答",
         correctText:  q.serverCorrectText,
         isCorrect:    q.isCorrectlyAnswered,
         answerSec:    q.answerSec ?? null,  // ★ v1.67 每題作答秒數
         questionType: q.questionType || "",
         cogType:      q.cogType || "",
+        source:       q.source || "未作答",
+        isFirstAttempt: (q.source || "未作答") === "未作答",
     }));
 
     // ★ v1.68 先送 submitScore，若被踢出則顯示說明頁，不顯示成績
     postGAS({ action:"submitScore", studentId, name:studentName,
-        topic:currentSelectedTopic, mode:isRetryMode?"錯題重做":"完整測驗",
+        batchId: currentBatchId,
+        topic:currentSelectedTopic, mode:isRetryMode?"錯題重做":"綜合練習",
         attempt:attemptCount, score:scoreCalc, correctCount:scoreCorrect, wrongCount:wrong,
         duration: quizStartTime > 0 ? Math.round((Date.now() - quizStartTime) / 1000) : 0,
         token: sessionToken, ip: clientIP
@@ -1621,7 +1752,10 @@ function showResults(scoreCorrect) {
         loadCompletionRanking(true);
         // 明細非同步送出（不影響顯示）
         postGAS({ action:"submitAnswerDetail", studentId, name:studentName,
-            mode:isRetryMode?"錯題重做":"完整測驗", attempt:attemptCount, details,
+            batchId: currentBatchId,
+            mode:isRetryMode?"錯題重做":"綜合練習", attempt:attemptCount, details,
+            settingsVersion: currentSettingsVersion,
+            questionBankVersion: currentQuestionBankVersion,
             token: sessionToken
         }).catch(() => {});
     }).catch(() => {
@@ -2575,22 +2709,20 @@ function closeComboModal() {
 }
 
 async function startComboQuiz() {
-    if (!(await verifySessionOnce())) return;
-    const selectedTopics = [...document.querySelectorAll(".combo-topic-cb:checked")].map(cb => cb.value);
-    const requestTopics = selectedTopics.length === 1 && selectedTopics[0] === "未分類" && hasOnlyUnknownTopic()
-        ? []
-        : selectedTopics;
     const count = parseInt(document.getElementById("combo-count").value) || 30;
-
-    if (selectedTopics.length === 0) {
-        alert("請至少勾選一個分類！");
-        return;
-    }
-
     closeComboModal();
+    return startCountQuiz(count);
+}
+
+async function startCountQuiz(count) {
+    if (!(await verifySessionOnce())) return;
     currentSelectedTopic = "綜合練習";
     isRetryMode = false;
     attemptCount++;
+    currentBatchId = "";
+    currentQuestionBankVersion = "";
+    currentSettingsVersion = "";
+    quizStartTime = Date.now();
 
     hide("topic-section");
     // 完成度已整合進 topic-section，進入答題時 topic-section 本身就隱藏
@@ -2599,7 +2731,14 @@ async function startComboQuiz() {
     show("submitting-section");
 
     try {
-        const res = await postGAS({ action: "getQuizByCount", count, topics: requestTopics });
+        const res = await postGAS({
+            action: "getQuizByCount",
+            count,
+            studentId,
+            name: studentName,
+            mode: "綜合練習",
+            excludeIds: [...sessionAnsweredIds]
+        });
         if (res.status !== "ok") throw new Error(res.message || "載入失敗");
 
         const picked = res.data || [];
@@ -2607,9 +2746,13 @@ async function startComboQuiz() {
         if (!picked.length) {
             show("topic-section");
             hide("submitting-section");
-            alert("勾選的分類目前沒有題目！");
+            alert("目前沒有可練習的題目！");
             return;
         }
+
+        currentBatchId = res.batchId || "";
+        currentQuestionBankVersion = res.questionBankVersion || "";
+        currentSettingsVersion = res.settingsVersion || "";
 
         allQuestionsData = picked.map((item, idx) => ({
             id:      item.id      || `Q_${idx}`,
@@ -2623,6 +2766,7 @@ async function startComboQuiz() {
             cogType: item.cogType || "",
             ans:     item.ans     || "",
             exp:     item.exp     || "",
+            source:  item.source  || "未作答",
         }));
 
         hide("submitting-section");
@@ -3211,6 +3355,11 @@ function renderCogTypeStats(cogList) {
 function renderSettingsTab(currentSettings) {
     // 分數
     document.getElementById("settings-pass-score").value = currentSettings?.passScore ?? 80;
+    const deadlines = currentSettings?.campusDeadlines || {};
+    const xdInput = document.getElementById("settings-deadline-xindian");
+    const ylInput = document.getElementById("settings-deadline-yilan");
+    if (xdInput) xdInput.value = formatDeadlineInput(deadlines.xindian || currentSettings?.deadline || "");
+    if (ylInput) ylInput.value = formatDeadlineInput(deadlines.yilan || "");
 
     // ── 分類勾選：依題庫順序（topicsData）──
     // 先取題庫順序，再補入有作答但不在題庫的分類
@@ -3255,13 +3404,19 @@ async function saveCompletionSettings() {
     const passScore = parseInt(document.getElementById("settings-pass-score").value) || 80;
     const topics    = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.value);
     const classes   = [...document.querySelectorAll(".settings-class-cb:checked")].map(cb => cb.value);
+    const campusDeadlines = {
+        xindian: document.getElementById("settings-deadline-xindian")?.value || "",
+        yilan: document.getElementById("settings-deadline-yilan")?.value || "",
+    };
     const btn       = document.getElementById("settings-save-btn");
     const status    = document.getElementById("settings-save-status");
 
     btn.disabled = true; btn.textContent = "儲存中...";
     try {
-        const res = await postGAS({ action: "saveSettings", passScore, completionTopics: topics, completionClasses: classes });
+        const res = await postGAS({ action: "saveSettings", passScore, completionTopics: topics, completionClasses: classes, campusDeadlines });
         if (res.status !== "ok") throw new Error(res.message || "儲存失敗");
+        completionSettings = { ...completionSettings, passScore, completionTopics: topics, completionClasses: classes, campusDeadlines };
+        initCampusDeadlines(campusDeadlines);
         status.textContent  = "✓ 設定已儲存！學生下次登入時排行榜將更新。";
         status.className    = "text-sm mt-3 font-medium text-green-600";
         status.classList.remove("hidden");
