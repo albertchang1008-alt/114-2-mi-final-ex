@@ -119,8 +119,17 @@
     <section id="login-section" class="hidden mobile-card p-6 md:p-10 mx-auto max-w-md">
         <h2 class="text-xl font-black mb-2 text-center text-gray-800">學生登入</h2>
         <p class="text-sm text-center mb-6" style="color:var(--warm-muted);">請使用學校 Google 帳號登入</p>
+        <div id="line-browser-warning" class="hidden mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
+            <p class="text-sm font-black text-amber-800 mb-1">LINE 內建瀏覽器無法完成 Google 登入</p>
+            <p class="text-xs text-amber-700 leading-relaxed mb-3">請點右上角選單，選擇「在瀏覽器開啟」或「在 Safari/Chrome 開啟」。如果找不到選項，可以先複製連結再貼到 Safari/Chrome。</p>
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="openExternalBrowser()" class="w-full text-sm font-bold py-2.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition">嘗試用外部瀏覽器開啟</button>
+                <button onclick="copyCurrentUrl()" class="w-full text-sm font-bold py-2.5 rounded-xl bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 transition">複製目前連結</button>
+            </div>
+            <p id="copy-url-status" class="hidden text-xs text-amber-700 text-center mt-2 font-semibold"></p>
+        </div>
         <div id="google-signin-btn" class="flex justify-center mb-4"></div>
-        <button onclick="switchGoogleAccount()" class="w-full text-sm font-bold py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 mb-4">切換 Google 帳號</button>
+        <button id="switch-google-btn" onclick="switchGoogleAccount()" class="w-full text-sm font-bold py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 mb-4">切換 Google 帳號</button>
         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></p>
     </section>
 
@@ -1000,7 +1009,104 @@ async function fetchQuestionBank() {
 // ══════════════════════════════════════════════
 //  2. Google 登入
 // ══════════════════════════════════════════════
+function isLineInAppBrowser() {
+    return /Line\//i.test(navigator.userAgent || "");
+}
+
+function showLineBrowserWarning() {
+    const warning = document.getElementById("line-browser-warning");
+    const googleBtn = document.getElementById("google-signin-btn");
+    const switchBtn = document.getElementById("switch-google-btn");
+    const errEl = document.getElementById("login-error");
+    if (warning) warning.classList.remove("hidden");
+    if (googleBtn) googleBtn.classList.add("hidden");
+    if (switchBtn) switchBtn.classList.add("hidden");
+    if (errEl) {
+        errEl.textContent = "請改用 Safari 或 Chrome 開啟後再登入。";
+        errEl.classList.remove("hidden");
+    }
+}
+
+function hideLineBrowserWarning() {
+    const warning = document.getElementById("line-browser-warning");
+    const googleBtn = document.getElementById("google-signin-btn");
+    const switchBtn = document.getElementById("switch-google-btn");
+    if (warning) warning.classList.add("hidden");
+    if (googleBtn) googleBtn.classList.remove("hidden");
+    if (switchBtn) switchBtn.classList.remove("hidden");
+}
+
+async function copyCurrentUrl() {
+    const status = document.getElementById("copy-url-status");
+    const url = window.location.href;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(url);
+        } else {
+            const tmp = document.createElement("textarea");
+            tmp.value = url;
+            tmp.style.position = "fixed";
+            tmp.style.left = "-9999px";
+            document.body.appendChild(tmp);
+            tmp.focus();
+            tmp.select();
+            document.execCommand("copy");
+            tmp.remove();
+        }
+        if (status) {
+            status.textContent = "已複製，請貼到 Safari 或 Chrome 開啟";
+            status.classList.remove("hidden");
+        }
+    } catch(e) {
+        if (status) {
+            status.textContent = "複製失敗，請用 LINE 右上角選單在外部瀏覽器開啟";
+            status.classList.remove("hidden");
+        }
+    }
+}
+
+async function openExternalBrowser() {
+    const status = document.getElementById("copy-url-status");
+    const url = window.location.href;
+    const ua = navigator.userAgent || "";
+
+    if (!/^https?:\/\//i.test(url)) {
+        await copyCurrentUrl();
+        if (status) {
+            status.textContent = "本機檔案無法直接跳接外部瀏覽器；正式網址上線後才可嘗試跳接。";
+            status.classList.remove("hidden");
+        }
+        return;
+    }
+
+    if (/Android/i.test(ua)) {
+        try {
+            const u = new URL(url);
+            const scheme = u.protocol.replace(":", "");
+            window.location.href = `intent://${u.host}${u.pathname}${u.search}${u.hash}#Intent;scheme=${scheme};package=com.android.chrome;end`;
+            if (status) {
+                status.textContent = "正在嘗試開啟 Chrome；若沒有反應，請改用複製連結。";
+                status.classList.remove("hidden");
+            }
+        } catch(e) {
+            await copyCurrentUrl();
+        }
+        return;
+    }
+
+    await copyCurrentUrl();
+    if (status) {
+        status.textContent = "iPhone 的 LINE 不允許網頁強制跳到 Safari；已複製連結，請貼到 Safari 或 Chrome。";
+        status.classList.remove("hidden");
+    }
+}
+
 function initGoogleSignIn() {
+    if (isLineInAppBrowser()) {
+        showLineBrowserWarning();
+        return;
+    }
+    hideLineBrowserWarning();
     if (!window.google || !google.accounts?.id) {
         setTimeout(initGoogleSignIn, 200);
         return;
