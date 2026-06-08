@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -122,14 +121,6 @@
         <p class="text-sm text-center mb-6" style="color:var(--warm-muted);">請使用學校 Google 帳號登入</p>
         <div id="google-signin-btn" class="flex justify-center mb-4"></div>
         <button onclick="switchGoogleAccount()" class="w-full text-sm font-bold py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 mb-4">切換 Google 帳號</button>
-        <details class="mt-4">
-            <summary class="cursor-pointer text-xs font-semibold text-gray-400 text-center">學號姓名備援登入</summary>
-            <div class="space-y-3 mt-4">
-                <input type="text" id="input-id" class="input-warm" placeholder="學號，例如：113510629" onkeydown="if(event.key==='Enter') handleLogin()">
-                <input type="text" id="input-name" class="input-warm" placeholder="姓名" onkeydown="if(event.key==='Enter') handleLogin()">
-                <button id="login-btn" onclick="handleLogin()" class="w-full btn-primary-warm">進入系統</button>
-            </div>
-        </details>
         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></p>
     </section>
 
@@ -164,7 +155,7 @@
             <!-- ★ v1.65 閃卡提示橫幅 -->
             <div class="flex items-start gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5 mb-3">
                 <span class="text-base flex-shrink-0">🃏</span>
-                <p class="text-xs text-green-700 font-semibold leading-relaxed">閃卡與測驗同等效力，完成閃卡即可累積完成度！</p>
+                <p class="text-xs text-green-700 font-semibold leading-relaxed">選擇綜合練習或閃卡；錯題閃卡已獨立成專用功能。</p>
             </div>
             <!-- 完成度進度條（有完成度設定時才顯示）-->
             <div id="my-completion-summary" class="hidden bg-sky-50 rounded-xl p-3 border border-sky-100">
@@ -177,8 +168,8 @@
                 </div>
             </div>
         </div>
-        <!-- 分類列表（renderTopics 注入，每列含測驗+閃卡+最高分）-->
-        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">選擇測驗單元</p>
+        <!-- 分類列表（renderTopics 注入，每列為閃卡分類）-->
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">選擇練習方式</p>
         <div id="topic-list" class="space-y-2"></div>
     </section>
 
@@ -334,8 +325,8 @@
             <!-- ★ 閃卡複習提示橫幅（低分時顯示）-->
             <div id="fc-hint-banner" class="hidden max-w-sm mx-auto mt-4 rounded-xl px-4 py-3 border-2 border-purple-200 bg-purple-50 text-left">
                 <p class="text-sm font-bold text-purple-700 mb-1">🃏 閃卡是你的秘笈！</p>
-                <p class="text-xs text-purple-600 mb-3">搭配解析複習錯題，比反覆測驗更有效率。</p>
-                <button onclick="openFlashcardModal(currentSelectedTopic)"
+                <p class="text-xs text-purple-600 mb-3">搭配解析複習題目，比反覆作答更有效率。</p>
+                <button onclick="loadAndStartFlashcard(currentSelectedTopic)"
                     class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2.5 rounded-lg text-sm transition">
                     🃏 立即開啟閃卡複習
                 </button>
@@ -344,7 +335,7 @@
             <div class="flex flex-col gap-3 justify-center mt-4 max-w-sm mx-auto">
                 <div class="flex flex-col sm:flex-row gap-3">
                     <button id="btn-retry" onclick="startRetry()" class="hidden flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-md shadow-rose-200">錯題重做</button>
-                    <button onclick="startFullQuiz(currentSelectedTopic)" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-md shadow-sky-200">重新完整測驗</button>
+                    <button onclick="startFullQuiz(currentSelectedTopic)" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-md shadow-sky-200">再做一次綜合練習</button>
                 </div>
                 <button onclick="backToTopics()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 px-6 rounded-xl transition">回單元列表</button>
             </div>
@@ -487,32 +478,6 @@
                     <p class="text-xs text-gray-400 mt-0.5">複習此分類的所有題目</p>
                 </div>
             </button>
-            <div class="border-2 border-gray-100 rounded-xl overflow-hidden">
-                <button onclick="startFcMode('wrong')" id="fc-wrong-btn"
-                    class="w-full text-left flex items-center gap-4 hover:border-rose-300 hover:bg-rose-50 px-4 py-4 transition">
-                    <span class="text-2xl">❌</span>
-                    <div class="flex-1">
-                        <p class="font-bold text-gray-800">複習錯題</p>
-                        <p class="text-xs text-gray-400 mt-0.5" id="fc-wrong-desc">請選擇時間範圍</p>
-                    </div>
-                </button>
-                <!-- 天數選單 -->
-                <div class="flex items-center gap-2 px-4 pb-3 border-t border-gray-100 pt-2 bg-gray-50">
-                    <span class="text-xs text-gray-500 shrink-0">時間範圍：</span>
-                    <select id="fc-days-select"
-                        class="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white"
-                        onchange="onFcDaysChange()">
-                        <option value="1h">最近 1 小時</option>
-                        <option value="3h">最近 3 小時</option>
-                        <option value="6h">最近 6 小時</option>
-                        <option value="12h">最近 12 小時</option>
-                        <option value="24h" selected>最近 24 小時</option>
-                        <option value="72h">最近 3 天</option>
-                        <option value="168h">最近 7 天</option>
-                        <option value="0">全部時間</option>
-                    </select>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -928,7 +893,6 @@ async function updateScoreTable() {
 // ── 系統狀態 ──
 let allQuestionsData   = [];
 let topicsData         = [];   // ★ 分類清單（doGet 回傳）
-let studentHashes      = [];   // ★ 從 GAS 載入的雜湊名單，本地比對用（不含原始學號姓名）
 let completionSettings = { passScore: 80, completionTopics: [], completionClasses: [] }; // ★ 完成度設定
 let allClassList       = [];   // ★ 所有班級清單（後台設定用）
 let studentName        = "";
@@ -992,9 +956,6 @@ async function fetchQuestionBank() {
             titleEl.style.color = "";
         }
 
-        // ★ 儲存雜湊名單供登入時本地比對（原始學號姓名不在前端）
-        studentHashes = result.studentHashes || [];
-
         // ★ 只儲存分類清單，題目內容待進入分類後再載入
         topicsData = result.topics || [];
 
@@ -1037,7 +998,7 @@ async function fetchQuestionBank() {
 }
 
 // ══════════════════════════════════════════════
-//  2. Google 登入 + 學號姓名備援登入
+//  2. Google 登入
 // ══════════════════════════════════════════════
 function initGoogleSignIn() {
     if (!window.google || !google.accounts?.id) {
@@ -1157,45 +1118,6 @@ async function completeLogin(idVal, nameVal, emailVal) {
     }
 }
 
-async function handleLogin() {
-    const idVal   = document.getElementById("input-id").value.trim();
-    const nameVal = document.getElementById("input-name").value.trim();
-    const errEl   = document.getElementById("login-error");
-    const loginBtn = document.getElementById("login-btn");
-
-    if (!idVal || !nameVal) {
-        showErr(errEl, "請完整填寫學號與姓名！"); return;
-    }
-
-    // ★ 用雜湊比對（前端看不到原始學號姓名，安全且即時）
-    //   若名單為空（尚未在 Sheet 設定），允許任何人登入
-    if (studentHashes.length > 0) {
-        const inputHash = hashString(idVal + "|" + nameVal);
-        if (!studentHashes.includes(inputHash)) {
-            showErr(errEl, "學號或姓名不符，請確認後再試");
-            return;
-        }
-    }
-
-    errEl.classList.add("hidden");
-    loginBtn.disabled = true;
-    loginBtn.textContent = "登入中...";
-
-    try {
-        await completeLogin(idVal, nameVal, "");
-    } catch(e) {
-        if (!document.getElementById("kicked-section").classList.contains("hidden")) return;
-        showErr(errEl, e.message || "登入驗證失敗，請重新嘗試");
-        loginBtn.disabled = false;
-        loginBtn.textContent = "進入系統";
-        studentId = "";
-        studentName = "";
-        return;
-    }
-    loginBtn.disabled = false;
-    loginBtn.textContent = "進入系統";
-}
-
 // ══════════════════════════════════════════════
 //  3. 單元列表
 // ══════════════════════════════════════════════
@@ -1248,8 +1170,31 @@ function renderTopics() {
         });
     }
 
-    // 分類列表（列式，每列含測驗+閃卡+最高分）
-    console.log("📋 開始渲染", topicsData.length, "個分類");
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5";
+
+    const comboBtn = document.createElement("button");
+    comboBtn.className = "text-left bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl transition text-blue-800 font-bold";
+    comboBtn.innerHTML = `<div class="text-base">🏆 綜合練習</div><div class="text-xs text-blue-500 mt-1 font-semibold">選分類與題數後開始作答</div>`;
+    comboBtn.onclick = () => openComboModal();
+    actionWrap.appendChild(comboBtn);
+
+    if (studentId) {
+        const wrongFcBtn = document.createElement("button");
+        wrongFcBtn.className = "text-left bg-rose-50 border-2 border-rose-200 hover:border-rose-400 hover:bg-rose-100 p-4 rounded-xl transition text-rose-800 font-bold";
+        wrongFcBtn.innerHTML = `<div class="text-base">🃏 錯題閃卡</div><div class="text-xs text-rose-500 mt-1 font-semibold">獨立複習歷史錯題</div>`;
+        wrongFcBtn.onclick = () => openWrongFcModal();
+        actionWrap.appendChild(wrongFcBtn);
+    }
+    div.appendChild(actionWrap);
+
+    const fcTitle = document.createElement("p");
+    fcTitle.className = "text-xs font-bold text-gray-400 uppercase tracking-wider mb-3";
+    fcTitle.textContent = "一般閃卡";
+    div.appendChild(fcTitle);
+
+    // 分類列表（列式，每列只進入閃卡）
+    console.log("📋 開始渲染", topicsData.length, "個閃卡分類");
     topicsData.forEach(({ name: topic, color }, idx) => {
         try {
         const hex   = getColor(color);
@@ -1291,44 +1236,21 @@ function renderTopics() {
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                     ${scoreBadge}
-                    <button class="quiz-btn" data-topic="${topic}"
-                        style="background:${hex};color:white;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;">
-                        測驗
-                    </button>
                     <button class="fc-btn" data-topic="${topic}"
-                        style="background:${hexToRgba(hex,0.1)};color:${hex};border:1.5px solid ${hexToRgba(hex,0.25)};border-radius:8px;padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer;">
-                        🃏
+                        style="background:${hexToRgba(hex,0.1)};color:${hex};border:1.5px solid ${hexToRgba(hex,0.25)};border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+                        閃卡
                     </button>
                 </div>
             </div>
         `;
-        row.querySelector(".quiz-btn").onclick = () => loadAndStartQuiz(topic);
-        row.querySelector(".fc-btn").onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
+        row.onclick = () => loadAndStartFlashcard(topic);
+        row.querySelector(".fc-btn").onclick = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
         div.appendChild(row);
         } catch(err) {
             console.error("❌ 分類 " + idx + " (" + topic + ") 渲染失敗：", err);
         }
     });
     console.log("✅ renderTopics 完成，渲染了", div.children.length, "個元素");
-
-    // 底部：綜合練習 + 錯題閃卡
-    const bottomWrap = document.createElement("div");
-    bottomWrap.className = "flex gap-3 mt-3";
-
-    const comboBtn = document.createElement("button");
-    comboBtn.className = "flex-1 text-center bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-3.5 rounded-xl transition text-blue-700 font-bold text-sm";
-    comboBtn.innerHTML = "🏆 綜合練習";
-    comboBtn.onclick = () => openComboModal();
-    bottomWrap.appendChild(comboBtn);
-
-    if (studentId) {
-        const wrongFcBtn = document.createElement("button");
-        wrongFcBtn.className = "flex-1 text-center bg-rose-50 border-2 border-rose-200 hover:border-rose-400 hover:bg-rose-100 p-3.5 rounded-xl transition text-rose-700 font-bold text-sm";
-        wrongFcBtn.innerHTML = "🃏 錯題閃卡";
-        wrongFcBtn.onclick = () => openWrongFcModal();
-        bottomWrap.appendChild(wrongFcBtn);
-    }
-    div.appendChild(bottomWrap);
 }
 
 
@@ -2465,18 +2387,11 @@ async function startWrongFcQuiz() {
 //  閃卡模式選擇
 // ══════════════════════════════════════════════
 let fcModalTopic   = "";
-let fcWrongQuestions = []; // 從 GAS 取得的歷史錯題
 
 function openFlashcardModal(topic) {
-    fcModalTopic = topic;
-    document.getElementById("fc-mode-topic").textContent = topic;
-    document.getElementById("fc-mode-modal").style.display = "flex";
-    fcWrongQuestions = [];
-    // 開啟時自動用預設天數載入
-    onFcDaysChange();
+    loadAndStartFlashcard(topic);
 }
 
-// 天數選單變更時重新載入錯題
 // 時間範圍標籤工具
 function getFcTimeLabel(val) {
     if (val === "0") return "全部時間";
@@ -2488,64 +2403,13 @@ function getFcTimeLabel(val) {
     return `最近 ${h} 小時`;
 }
 
-function onFcDaysChange() {
-    const val  = document.getElementById("fc-days-select").value;
-    const hours = val === "0" ? 0 : parseInt(val); // 0=全部，其他=小時數
-    const desc = document.getElementById("fc-wrong-desc");
-    const btn  = document.getElementById("fc-wrong-btn");
-    desc.textContent = "載入中...";
-    btn.disabled = true;
-    btn.classList.remove("opacity-50");
-    fcWrongQuestions = [];
-
-    if (!studentId) {
-        desc.textContent = "需要登入才能使用此功能";
-        return;
-    }
-    postGAS({ action: "getMyWrongQuestions", studentId, topic: fcModalTopic, hours })
-        .then(res => {
-            if (res.status === "ok") {
-                fcWrongQuestions = res.questions || [];
-                if (fcWrongQuestions.length > 0) {
-                    const label = getFcTimeLabel(val);
-                    desc.textContent = `${label}內共 ${fcWrongQuestions.length} 題尚未答對`;
-                    btn.disabled = false;
-                } else {
-                    const label = getFcTimeLabel(val);
-                    desc.textContent = `${label}內無錯題 🎉`;
-                    btn.disabled = true;
-                    btn.classList.add("opacity-50");
-                }
-            }
-        }).catch(() => {
-            desc.textContent = "載入失敗，請重試";
-        });
-}
-
 function closeFcModeModal() {
     document.getElementById("fc-mode-modal").style.display = "none";
-    document.getElementById("fc-wrong-btn").disabled = false;
-    document.getElementById("fc-wrong-btn").classList.remove("opacity-50");
 }
 
 async function startFcMode(mode) {
-    if (mode === "all") {
-        closeFcModeModal();
-        // 全部題目：原有邏輯
-        await loadAndStartFlashcard(fcModalTopic);
-    } else {
-        // 錯題複習：直接用已載入的錯題資料
-        if (!fcWrongQuestions.length) return;
-        closeFcModeModal();
-        hide("topic-section");
-        // 完成度已整合進 topic-section
-        show("flashcard-loading-section");
-        if (!(await verifySessionOnce())) return;
-        // 錯題已含 ans/exp，直接使用
-        allQuestionsData = fcWrongQuestions;
-        hide("flashcard-loading-section");
-        startFlashcard(fcWrongQuestions, `${fcModalTopic}（錯題複習）`);
-    }
+    closeFcModeModal();
+    await loadAndStartFlashcard(fcModalTopic);
 }
 
 // ══════════════════════════════════════════════
