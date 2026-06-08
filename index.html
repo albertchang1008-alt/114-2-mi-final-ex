@@ -1589,7 +1589,7 @@ function renderQuestion() {
     container.innerHTML = "";
     q.shuffledOpts.forEach((optText, idx) => {
         const btn = document.createElement("button");
-        btn.className = "option-btn w-full text-left bg-gray-50 border border-gray-200 hover:bg-pink-50 hover:border-pink-300 text-gray-700 font-medium rounded-xl p-4";
+        btn.className = "option-btn w-full text-left bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 active:bg-gray-50 text-gray-700 font-medium rounded-xl p-4";
         btn.textContent = optText;
         btn.onclick = () => handleOptionClick(btn, idx, q);
         container.appendChild(btn);
@@ -1602,7 +1602,7 @@ function handleOptionClick(clickedBtn, selectedIdx, qData) {
     // 鎖定按鈕
     document.querySelectorAll('.option-btn').forEach(b => {
         b.onclick = null;
-        b.classList.remove("hover:bg-pink-50","hover:border-pink-300");
+        b.classList.remove("hover:bg-gray-50","hover:border-gray-300","active:bg-gray-50");
     });
     clickedBtn.classList.add("option-selected");
     qData.userSelectedIndex = selectedIdx; // ★ 只記錄，不送網路
@@ -1887,7 +1887,7 @@ function renderFlashcard() {
     q.shuffledOpts = shuffledOpts; // ★ 存回 q，供 fcSelectOption 的 findIndex 使用
     shuffledOpts.forEach(opt => {
         const btn = document.createElement("button");
-        btn.className = "fc-opt-btn w-full text-left bg-gray-50 border border-gray-200 hover:bg-sky-50 hover:border-sky-300 text-gray-700 font-medium rounded-xl px-4 py-3 transition text-sm";
+        btn.className = "fc-opt-btn w-full text-left bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 active:bg-gray-50 text-gray-700 font-medium rounded-xl px-4 py-3 transition text-sm";
         btn.textContent = opt;
         btn.dataset.opt = opt;
         btn.onclick = () => fcSelectOption(btn, opt, q);
