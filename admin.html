@@ -695,6 +695,70 @@
                     <p class="text-xs text-gray-400 mt-2">時間會顯示在學生入口，倒數精確到秒。</p>
                 </div>
 
+                <!-- 登入頁顯示設定 -->
+                <div class="mb-6 border border-indigo-100 rounded-2xl p-5 bg-indigo-50/40">
+                    <h3 class="text-base font-black text-gray-800 mb-1">登入頁顯示設定</h3>
+                    <p class="text-xs text-gray-400 mb-4">控制學生登入前看到的排行與公告注意事項。</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        <label class="flex items-center gap-2 border border-white rounded-xl bg-white px-3 py-2 cursor-pointer">
+                            <input type="checkbox" id="settings-login-ranking-enabled" class="w-4 h-4 rounded accent-indigo-500">
+                            <span class="text-sm font-semibold text-gray-700">顯示登入頁排行</span>
+                        </label>
+                        <label class="flex items-center gap-2 border border-white rounded-xl bg-white px-3 py-2 cursor-pointer">
+                            <input type="checkbox" id="settings-login-show-pass-score" class="w-4 h-4 rounded accent-indigo-500">
+                            <span class="text-sm font-semibold text-gray-700">顯示達標分數</span>
+                        </label>
+                        <label class="flex items-center gap-2 border border-white rounded-xl bg-white px-3 py-2 cursor-pointer">
+                            <input type="checkbox" id="settings-login-show-today-count" class="w-4 h-4 rounded accent-indigo-500">
+                            <span class="text-sm font-semibold text-gray-700">顯示今日作答人數</span>
+                        </label>
+                        <div class="border border-white rounded-xl bg-white px-3 py-2">
+                            <label class="block text-xs font-bold text-gray-500 mb-1">最多顯示班級數（0＝全部）</label>
+                            <input type="number" id="settings-login-ranking-limit" min="0" value="0"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-sm font-semibold text-gray-700">登入頁排行顯示班級</label>
+                            <div class="flex gap-2">
+                                <span class="text-xs text-gray-400">全不選＝依上方完成度班級設定</span>
+                                <button onclick="loginRankingSelectAllClasses(true)" type="button" class="text-xs text-indigo-600 hover:text-indigo-800 underline">全選</button>
+                                <button onclick="loginRankingSelectAllClasses(false)" type="button" class="text-xs text-gray-400 hover:text-gray-600 underline">全不選</button>
+                            </div>
+                        </div>
+                        <div id="settings-login-ranking-class-list" class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1"></div>
+                    </div>
+
+                    <div class="border-t border-indigo-100 pt-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                            <label class="flex items-center gap-2 border border-white rounded-xl bg-white px-3 py-2 cursor-pointer">
+                                <input type="checkbox" id="settings-login-notice-enabled" class="w-4 h-4 rounded accent-indigo-500">
+                                <span class="text-sm font-semibold text-gray-700">顯示公告</span>
+                            </label>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-bold text-gray-500 mb-1">公告樣式</label>
+                                <select id="settings-login-notice-type"
+                                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+                                    <option value="info">一般</option>
+                                    <option value="important">重要</option>
+                                    <option value="warning">警告</option>
+                                </select>
+                            </div>
+                        </div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">公告標題</label>
+                        <input type="text" id="settings-login-notice-title"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                            placeholder="例如：考前注意事項">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">公告內容</label>
+                        <textarea id="settings-login-notice-content" rows="4"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                            placeholder="輸入要顯示在學生登入頁的注意事項"></textarea>
+                    </div>
+                </div>
+
                 <!-- 分類勾選 -->
                 <div class="mb-6">
                     <div class="flex items-center justify-between mb-3">
@@ -864,23 +928,46 @@ function formatCountdown(diff) {
     return `${String(hours).padStart(2,"0")} 時 ${String(minutes).padStart(2,"0")} 分 ${String(seconds).padStart(2,"0")} 秒`;
 }
 
+function normalizeCampusDeadlines(result) {
+    const settings = result?.completionSettings || {};
+    const direct = result?.campusDeadlines || {};
+    const nested = settings.campusDeadlines || {};
+    return {
+        xindian: direct.xindian || nested.xindian || settings.deadline || result?.deadline || "",
+        yilan: direct.yilan || nested.yilan || ""
+    };
+}
+
+function getLoginPageSettingsFrom(settings) {
+    const cfg = settings?.loginPage || {};
+    return {
+        rankingEnabled: cfg.rankingEnabled !== false,
+        rankingClassFilter: Array.isArray(cfg.rankingClassFilter) ? cfg.rankingClassFilter : [],
+        rankingLimit: parseInt(cfg.rankingLimit || 0) || 0,
+        showTodayCount: cfg.showTodayCount !== false,
+        showPassScore: cfg.showPassScore !== false,
+        noticeEnabled: cfg.noticeEnabled === true,
+        noticeTitle: cfg.noticeTitle || "",
+        noticeContent: cfg.noticeContent || "",
+        noticeType: cfg.noticeType || "info"
+    };
+}
+
 function renderCampusCountdown(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    const active = campusDeadlineState.filter(c => c.date);
-    if (!active.length) {
-        el.classList.add("hidden");
-        el.innerHTML = "";
-        return;
-    }
+    const items = campusDeadlineState.length ? campusDeadlineState : [
+        { key: "xindian", label: "新店校區", date: null },
+        { key: "yilan", label: "宜蘭校區", date: null }
+    ];
     el.classList.remove("hidden");
-    el.innerHTML = active.map(c => `
-        <div class="campus-countdown-card rounded-xl border px-4 py-3 bg-indigo-50 border-indigo-100" data-campus="${c.key}">
+    el.innerHTML = items.map(c => `
+        <div class="campus-countdown-card rounded-xl border px-4 py-3 bg-gray-50 border-gray-200" data-campus="${c.key}">
             <div class="flex items-center justify-between gap-3">
-                <span class="text-sm font-black text-indigo-800">${c.label}</span>
-                <span class="campus-countdown-status text-xs font-bold text-indigo-500">距截止</span>
+                <span class="text-sm font-black text-gray-700">${c.label}</span>
+                <span class="campus-countdown-status text-xs font-bold text-gray-400">考試倒數</span>
             </div>
-            <div class="campus-countdown-time mt-1 font-mono text-lg font-black text-indigo-900 tracking-wide">--</div>
+            <div class="campus-countdown-time mt-1 font-mono text-lg font-black text-gray-500 tracking-wide">尚未設定</div>
         </div>
     `).join("");
 }
@@ -902,12 +989,19 @@ function initCampusDeadlines(deadlines) {
     function update() {
         const now = new Date();
         campusDeadlineState.forEach(c => {
-            if (!c.date) return;
             document.querySelectorAll(`.campus-countdown-card[data-campus="${c.key}"]`).forEach(card => {
                 const timeEl = card.querySelector(".campus-countdown-time");
                 const statusEl = card.querySelector(".campus-countdown-status");
-                const diff = c.date - now;
                 card.className = "campus-countdown-card rounded-xl border px-4 py-3";
+                if (!c.date) {
+                    card.classList.add("bg-gray-50", "border-gray-200");
+                    statusEl.textContent = "考試倒數";
+                    statusEl.className = "campus-countdown-status text-xs font-bold text-gray-400";
+                    timeEl.textContent = "尚未設定";
+                    timeEl.className = "campus-countdown-time mt-1 font-mono text-lg font-black text-gray-500 tracking-wide";
+                    return;
+                }
+                const diff = c.date - now;
                 if (diff <= 0) {
                     card.classList.add("bg-red-50", "border-red-200");
                     statusEl.textContent = "已截止";
@@ -1041,7 +1135,7 @@ async function fetchQuestionBank() {
         allClassList       = result.allClassList || [];
 
         // 校區倒數計時器
-        initCampusDeadlines(result.campusDeadlines || completionSettings.campusDeadlines || { xindian: result.deadline || "", yilan: "" });
+        initCampusDeadlines(normalizeCampusDeadlines(result));
 
         hide("loading-section");
 
@@ -3409,6 +3503,24 @@ function renderSettingsTab(currentSettings) {
     if (xdInput) xdInput.value = formatDeadlineInput(deadlines.xindian || currentSettings?.deadline || "");
     if (ylInput) ylInput.value = formatDeadlineInput(deadlines.yilan || "");
 
+    const loginPage = getLoginPageSettingsFrom(currentSettings);
+    const rankingEnabled = document.getElementById("settings-login-ranking-enabled");
+    const showPassScore = document.getElementById("settings-login-show-pass-score");
+    const showTodayCount = document.getElementById("settings-login-show-today-count");
+    const rankingLimit = document.getElementById("settings-login-ranking-limit");
+    const noticeEnabled = document.getElementById("settings-login-notice-enabled");
+    const noticeType = document.getElementById("settings-login-notice-type");
+    const noticeTitle = document.getElementById("settings-login-notice-title");
+    const noticeContent = document.getElementById("settings-login-notice-content");
+    if (rankingEnabled) rankingEnabled.checked = loginPage.rankingEnabled;
+    if (showPassScore) showPassScore.checked = loginPage.showPassScore;
+    if (showTodayCount) showTodayCount.checked = loginPage.showTodayCount;
+    if (rankingLimit) rankingLimit.value = loginPage.rankingLimit || 0;
+    if (noticeEnabled) noticeEnabled.checked = loginPage.noticeEnabled;
+    if (noticeType) noticeType.value = loginPage.noticeType || "info";
+    if (noticeTitle) noticeTitle.value = loginPage.noticeTitle || "";
+    if (noticeContent) noticeContent.value = loginPage.noticeContent || "";
+
     // ── 分類勾選：依題庫順序（topicsData）──
     // 先取題庫順序，再補入有作答但不在題庫的分類
     const topicsFromDB  = topicsData.map(t => t.name);
@@ -3439,6 +3551,19 @@ function renderSettingsTab(currentSettings) {
                     <span class="text-sm text-gray-700">${cls}</span>
                 </label>`).join("");
     }
+
+    const loginClassContainer = document.getElementById("settings-login-ranking-class-list");
+    const loginClassSet = new Set(loginPage.rankingClassFilter || []);
+    if (loginClassContainer) {
+        loginClassContainer.innerHTML = allClassList.length === 0
+            ? '<p class="text-gray-400 text-sm col-span-2">尚未讀取到班級資料</p>'
+            : allClassList.map(cls => `
+                <label class="flex items-center gap-2 border border-white rounded-lg px-3 py-2 bg-white hover:bg-indigo-50 cursor-pointer">
+                    <input type="checkbox" class="settings-login-ranking-class-cb w-4 h-4 rounded accent-indigo-500"
+                        value="${cls}" ${loginClassSet.has(cls) ? "checked" : ""}>
+                    <span class="text-sm text-gray-700">${cls}</span>
+                </label>`).join("");
+    }
 }
 
 function settingsSelectAll(checked) {
@@ -3446,6 +3571,9 @@ function settingsSelectAll(checked) {
 }
 function settingsSelectAllClasses(checked) {
     document.querySelectorAll(".settings-class-cb").forEach(cb => cb.checked = checked);
+}
+function loginRankingSelectAllClasses(checked) {
+    document.querySelectorAll(".settings-login-ranking-class-cb").forEach(cb => cb.checked = checked);
 }
 
 async function saveCompletionSettings() {
@@ -3456,14 +3584,25 @@ async function saveCompletionSettings() {
         xindian: document.getElementById("settings-deadline-xindian")?.value || "",
         yilan: document.getElementById("settings-deadline-yilan")?.value || "",
     };
+    const loginPage = {
+        rankingEnabled: document.getElementById("settings-login-ranking-enabled")?.checked !== false,
+        rankingClassFilter: [...document.querySelectorAll(".settings-login-ranking-class-cb:checked")].map(cb => cb.value),
+        rankingLimit: parseInt(document.getElementById("settings-login-ranking-limit")?.value || "0") || 0,
+        showTodayCount: document.getElementById("settings-login-show-today-count")?.checked !== false,
+        showPassScore: document.getElementById("settings-login-show-pass-score")?.checked !== false,
+        noticeEnabled: document.getElementById("settings-login-notice-enabled")?.checked === true,
+        noticeTitle: document.getElementById("settings-login-notice-title")?.value || "",
+        noticeContent: document.getElementById("settings-login-notice-content")?.value || "",
+        noticeType: document.getElementById("settings-login-notice-type")?.value || "info"
+    };
     const btn       = document.getElementById("settings-save-btn");
     const status    = document.getElementById("settings-save-status");
 
     btn.disabled = true; btn.textContent = "儲存中...";
     try {
-        const res = await postGAS({ action: "saveSettings", passScore, completionTopics: topics, completionClasses: classes, campusDeadlines });
+        const res = await postGAS({ action: "saveSettings", passScore, completionTopics: topics, completionClasses: classes, campusDeadlines, loginPage });
         if (res.status !== "ok") throw new Error(res.message || "儲存失敗");
-        completionSettings = { ...completionSettings, passScore, completionTopics: topics, completionClasses: classes, campusDeadlines };
+        completionSettings = { ...completionSettings, passScore, completionTopics: topics, completionClasses: classes, campusDeadlines, loginPage };
         initCampusDeadlines(campusDeadlines);
         status.textContent  = "✓ 設定已儲存！學生下次登入時排行榜將更新。";
         status.className    = "text-sm mt-3 font-medium text-green-600";

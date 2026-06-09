@@ -73,6 +73,13 @@
     </section>
 
     <!-- 學生登入 -->
+    <section id="login-notice-section" class="hidden mobile-card p-5 md:p-6 mb-4">
+        <div id="login-notice-card" class="rounded-xl border px-4 py-3">
+            <div id="login-notice-title" class="font-black text-sm mb-1"></div>
+            <div id="login-notice-content" class="text-sm leading-relaxed whitespace-pre-line"></div>
+        </div>
+    </section>
+
     <!-- 班級完成度排行（登入框上方，無需登入即可看到） -->
     <section id="ranking-section" class="mobile-card p-6 md:p-8 mb-4">
         <div class="flex items-center justify-between mb-4">
@@ -116,7 +123,6 @@
         <div id="google-signin-btn" class="flex justify-center mb-4"></div>
         <button id="switch-google-btn" onclick="switchGoogleAccount()" class="w-full text-sm font-bold py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 mb-4">切換 Google 帳號</button>
         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></p>
-        <div id="campus-countdown-login" class="hidden mt-5 grid grid-cols-1 gap-2"></div>
     </section>
 
     <section id="register-section" class="hidden mobile-card p-6 md:p-10 mx-auto max-w-md">
@@ -539,7 +545,7 @@ function stopSessionPolling() { /* 保留空函式避免其他地方呼叫出錯
 
 function showKicked() {
     isLoggedIn = false;
-    ["loading-section","error-section","login-section","ranking-section","topic-section",
+    ["loading-section","error-section","login-section","login-notice-section","ranking-section","topic-section",
      "quiz-section","flashcard-loading-section","flashcard-section","flashcard-done-section",
      "result-section","submitting-section"].forEach(id => {
         const el = document.getElementById(id);
@@ -589,23 +595,83 @@ function formatCountdown(diff) {
     return `${String(hours).padStart(2,"0")} 時 ${String(minutes).padStart(2,"0")} 分 ${String(seconds).padStart(2,"0")} 秒`;
 }
 
+function normalizeCampusDeadlines(result) {
+    const settings = result?.completionSettings || {};
+    const direct = result?.campusDeadlines || {};
+    const nested = settings.campusDeadlines || {};
+    return {
+        xindian: direct.xindian || nested.xindian || settings.deadline || result?.deadline || "",
+        yilan: direct.yilan || nested.yilan || ""
+    };
+}
+
+function getLoginPageSettings() {
+    const cfg = completionSettings?.loginPage || {};
+    return {
+        rankingEnabled: cfg.rankingEnabled !== false,
+        rankingClassFilter: Array.isArray(cfg.rankingClassFilter) ? cfg.rankingClassFilter : [],
+        rankingLimit: parseInt(cfg.rankingLimit || 0) || 0,
+        showTodayCount: cfg.showTodayCount !== false,
+        showPassScore: cfg.showPassScore !== false,
+        noticeEnabled: cfg.noticeEnabled === true,
+        noticeTitle: cfg.noticeTitle || "",
+        noticeContent: cfg.noticeContent || "",
+        noticeType: cfg.noticeType || "info"
+    };
+}
+
+function escapeHTML(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+    }[ch]));
+}
+
+function renderLoginNotice() {
+    const cfg = getLoginPageSettings();
+    const section = document.getElementById("login-notice-section");
+    const card = document.getElementById("login-notice-card");
+    const title = document.getElementById("login-notice-title");
+    const content = document.getElementById("login-notice-content");
+    if (!section || !card || !title || !content) return;
+    if (!cfg.noticeEnabled || (!cfg.noticeTitle && !cfg.noticeContent)) {
+        hide("login-notice-section");
+        return;
+    }
+    const styleMap = {
+        info: "bg-sky-50 border-sky-200 text-sky-800",
+        important: "bg-violet-50 border-violet-200 text-violet-800",
+        warning: "bg-amber-50 border-amber-200 text-amber-800"
+    };
+    card.className = `rounded-xl border px-4 py-3 ${styleMap[cfg.noticeType] || styleMap.info}`;
+    title.innerHTML = escapeHTML(cfg.noticeTitle || "注意事項");
+    content.innerHTML = escapeHTML(cfg.noticeContent);
+    show("login-notice-section");
+}
+
+function shouldShowLoginRanking() {
+    const cfg = getLoginPageSettings();
+    return cfg.rankingEnabled && completionSettings?.completionTopics?.length > 0;
+}
+
 function renderCampusCountdown(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    const active = campusDeadlineState.filter(c => c.date);
-    if (!active.length) {
-        el.classList.add("hidden");
-        el.innerHTML = "";
-        return;
-    }
+    const items = campusDeadlineState.length ? campusDeadlineState : [
+        { key: "xindian", label: "新店校區", date: null },
+        { key: "yilan", label: "宜蘭校區", date: null }
+    ];
     el.classList.remove("hidden");
-    el.innerHTML = active.map(c => `
-        <div class="campus-countdown-card rounded-xl border px-4 py-3 bg-indigo-50 border-indigo-100" data-campus="${c.key}">
+    el.innerHTML = items.map(c => `
+        <div class="campus-countdown-card rounded-xl border px-4 py-3 bg-gray-50 border-gray-200" data-campus="${c.key}">
             <div class="flex items-center justify-between gap-3">
-                <span class="text-sm font-black text-indigo-800">${c.label}</span>
-                <span class="campus-countdown-status text-xs font-bold text-indigo-500">距截止</span>
+                <span class="text-sm font-black text-gray-700">${c.label}</span>
+                <span class="campus-countdown-status text-xs font-bold text-gray-400">考試倒數</span>
             </div>
-            <div class="campus-countdown-time mt-1 font-mono text-lg font-black text-indigo-900 tracking-wide">--</div>
+            <div class="campus-countdown-time mt-1 font-mono text-lg font-black text-gray-500 tracking-wide">尚未設定</div>
         </div>
     `).join("");
 }
@@ -617,7 +683,6 @@ function initCampusDeadlines(deadlines) {
         { key: "xindian", label: "新店校區", date: parseDeadlineDate(deadlines.xindian || "") },
         { key: "yilan", label: "宜蘭校區", date: parseDeadlineDate(deadlines.yilan || "") }
     ];
-    renderCampusCountdown("campus-countdown-login");
     renderCampusCountdown("campus-countdown-topic");
     const oldBar = document.getElementById("deadline-bar");
     const oldSpacer = document.getElementById("deadline-spacer");
@@ -627,12 +692,19 @@ function initCampusDeadlines(deadlines) {
     function update() {
         const now = new Date();
         campusDeadlineState.forEach(c => {
-            if (!c.date) return;
             document.querySelectorAll(`.campus-countdown-card[data-campus="${c.key}"]`).forEach(card => {
                 const timeEl = card.querySelector(".campus-countdown-time");
                 const statusEl = card.querySelector(".campus-countdown-status");
-                const diff = c.date - now;
                 card.className = "campus-countdown-card rounded-xl border px-4 py-3";
+                if (!c.date) {
+                    card.classList.add("bg-gray-50", "border-gray-200");
+                    statusEl.textContent = "考試倒數";
+                    statusEl.className = "campus-countdown-status text-xs font-bold text-gray-400";
+                    timeEl.textContent = "尚未設定";
+                    timeEl.className = "campus-countdown-time mt-1 font-mono text-lg font-black text-gray-500 tracking-wide";
+                    return;
+                }
+                const diff = c.date - now;
                 if (diff <= 0) {
                     card.classList.add("bg-red-50", "border-red-200");
                     statusEl.textContent = "已截止";
@@ -748,14 +820,15 @@ async function fetchQuestionBank() {
         allClassList       = result.allClassList || [];
 
         // 校區倒數計時器
-        initCampusDeadlines(result.campusDeadlines || completionSettings.campusDeadlines || { xindian: result.deadline || "", yilan: "" });
+        initCampusDeadlines(normalizeCampusDeadlines(result));
 
         hide("loading-section");
+        renderLoginNotice();
         show("login-section");
         initGoogleSignIn();
 
         // ★ #1 修正：排行從 doGet 直接取，零延遲
-        if (completionSettings.completionTopics?.length > 0 && result.rankingCache) {
+        if (shouldShowLoginRanking() && result.rankingCache) {
             rankingData = {
                 status: "ok",
                 passScore:        result.rankingCache.passScore,
@@ -769,7 +842,7 @@ async function fetchQuestionBank() {
             renderRankingSection(rankingData);
             // 背景補齊今日練習人數
             loadCompletionRanking(true);
-        } else if (completionSettings.completionTopics?.length > 0) {
+        } else if (shouldShowLoginRanking()) {
             // 快取不存在時回退到獨立呼叫
             loadCompletionRanking(false);
         } else {
@@ -1845,22 +1918,16 @@ function renderMyCompletion(data) {
 }
 
 async function loadCompletionRanking(todayOnly = false) {
+    if (!shouldShowLoginRanking()) {
+        hide("ranking-section");
+        return;
+    }
     try {
         const res = await postGAS({ action: "getCompletionRanking" });
         if (res.status !== "ok") return;
         rankingData = res;
         if (todayOnly) {
-            // ★ 只更新今日練習人數，不重新渲染全部排行
-            document.querySelectorAll("#ranking-list .student-row").forEach((row, idx) => {
-                const cls = rankingData.ranking[idx];
-                if (!cls) return;
-                const todayCnt = (res.todayByClass && res.todayByClass[cls.class]) || 0;
-                const span = row.querySelector(".today-cnt");
-                if (span) span.textContent = todayCnt;
-            });
-            // 更新總計
-            const totalEl = document.querySelector("#ranking-list .today-total");
-            if (totalEl) totalEl.textContent = res.todayTotal ?? 0;
+            renderRankingSection(res);
             return;
         }
         if (isLoggedIn) return;
@@ -1879,10 +1946,22 @@ async function loadCompletionRanking(todayOnly = false) {
 }
 
 function renderRankingSection(data) {
-    const { passScore, completionTopics, ranking, todayTotal, todayByClass } = data;
+    const { passScore, completionTopics, todayTotal, todayByClass } = data;
+    const cfg = getLoginPageSettings();
+    let ranking = data.ranking || [];
+    if (cfg.rankingClassFilter.length) {
+        const classSet = new Set(cfg.rankingClassFilter);
+        ranking = ranking.filter(cls => classSet.has(cls.class));
+    }
+    if (cfg.rankingLimit > 0) ranking = ranking.slice(0, cfg.rankingLimit);
     const totalStudents = ranking.reduce((s, r) => s + r.studentCount, 0);
+    const visibleTodayTotal = ranking.reduce((s, cls) => s + ((todayByClass && todayByClass[cls.class]) || 0), 0);
 
-    document.getElementById("ranking-pass-badge").textContent = `達標：${passScore} 分`;
+    const passBadge = document.getElementById("ranking-pass-badge");
+    if (passBadge) {
+        passBadge.textContent = `達標：${passScore} 分`;
+        passBadge.classList.toggle("hidden", !cfg.showPassScore);
+    }
     document.getElementById("ranking-list").innerHTML = "";
     document.getElementById("ranking-student-view").classList.add("hidden");
 
@@ -1900,7 +1979,7 @@ function renderRankingSection(data) {
         <span style="flex:1;"></span>
         <span style="font-size:10px;color:#94a3b8;min-width:52px;text-align:center;">完成度</span>
         <div style="flex:2;margin:0 8px;"></div>
-        <span style="font-size:10px;color:#94a3b8;min-width:52px;text-align:right;">今日練習</span>
+        ${cfg.showTodayCount ? '<span style="font-size:10px;color:#94a3b8;min-width:52px;text-align:right;">今日練習</span>' : ""}
     </div>`;
 
     // ── 各班列 ──
@@ -1922,9 +2001,9 @@ function renderRankingSection(data) {
                     <div class="rate-bar-fill" style="width:${pct}%;background:linear-gradient(90deg,${color},${color}88);"></div>
                 </div>
             </div>
-            <span class="text-xs font-bold min-w-[52px] text-right">
+            ${cfg.showTodayCount ? `<span class="text-xs font-bold min-w-[52px] text-right">
                 <span class="today-cnt" style="color:#10b981;">${todayCnt}</span><span class="text-gray-400">/${cls.studentCount}人</span>
-            </span>
+            </span>` : ""}
             <svg class="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
@@ -1932,20 +2011,20 @@ function renderRankingSection(data) {
     }).join("");
 
     // ── 總計 ──
-    const totalRow = `<div style="padding-top:10px;border-top:1.5px dashed #e2e8f0;margin-top:2px;">
+    const totalRow = cfg.showTodayCount ? `<div style="padding-top:10px;border-top:1.5px dashed #e2e8f0;margin-top:2px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
             <div style="display:flex;align-items:center;gap:5px;">
                 <span style="font-size:14px;">📅</span>
                 <span style="font-size:12px;color:#64748b;">今天共</span>
-                <span class="today-total" style="font-size:20px;font-weight:900;color:#10b981;line-height:1;">${todayTotal ?? 0}</span>
+                <span class="today-total" style="font-size:20px;font-weight:900;color:#10b981;line-height:1;">${visibleTodayTotal}</span>
                 <span style="font-size:12px;color:#64748b;">人練習過</span>
             </div>
             <span style="font-size:11px;color:#94a3b8;background:#f8fafc;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;">共 ${totalStudents} 人</span>
         </div>
         <div class="rate-bar" style="height:5px;">
-            <div class="rate-bar-fill" style="width:${totalStudents>0?Math.round((todayTotal??0)/totalStudents*100):0}%;background:linear-gradient(90deg,#10b981,#34d399);"></div>
+            <div class="rate-bar-fill" style="width:${totalStudents>0?Math.round(visibleTodayTotal/totalStudents*100):0}%;background:linear-gradient(90deg,#10b981,#34d399);"></div>
         </div>
-    </div>`;
+    </div>` : "";
 
     document.getElementById("ranking-list").innerHTML = headerRow + rows + totalRow;
 }
