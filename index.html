@@ -6,6 +6,11 @@
     <title>動態題庫測驗</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="firebase-v18.js"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -256,11 +261,6 @@
                 <p class="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">全部選項</p>
                 <div id="fc-back-options" class="space-y-2"></div>
             </div>
-            <!-- 正確答案 -->
-            <div class="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-3">
-                <p class="text-xs text-sky-500 font-semibold mb-1 uppercase tracking-wider">正確答案</p>
-                <p id="fc-answer" class="text-sky-700 font-bold text-lg leading-snug"></p>
-            </div>
             <!-- 解析 -->
             <div id="fc-exp-wrap" class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 hidden">
                 <p class="text-xs text-gray-400 font-semibold mb-1 uppercase tracking-wider">💡 解析</p>
@@ -361,7 +361,7 @@
 
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-714">v1.71</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.8 ／ 適配 GAS v10-714">v1.8</span>
     <a href="admin.html" class="text-gray-200 text-xs ml-2 hover:text-gray-400 transition" aria-label="教師後台">教師後台</a>
 </footer>
 
@@ -822,9 +822,19 @@ document.addEventListener("visibilitychange", () => {
 async function fetchQuestionBank() {
     show("loading-section"); hide("error-section");
     try {
-        const res    = await fetch(GAS_URL);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const result = await res.json();
+        let result = null;
+        if (window.FirebaseV18?.isEnabled?.()) {
+            try {
+                result = await window.FirebaseV18.loadBootstrap();
+            } catch (fbErr) {
+                console.warn("[v1.8] Firebase 載入失敗，回退 GAS：", fbErr);
+            }
+        }
+        if (!result) {
+            const res = await fetch(GAS_URL);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            result = await res.json();
+        }
         if (result.status !== "success" || !result.topics?.length)
             throw new Error("題庫回傳格式不正確，或題庫為空");
 
@@ -998,6 +1008,15 @@ function initGoogleSignIn() {
         return;
     }
     hideLineBrowserWarning();
+    if (window.FirebaseV18?.isEnabled?.()) {
+        const btn = document.getElementById("google-signin-btn");
+        if (btn) {
+            btn.innerHTML = `<button type="button" onclick="handleFirebaseLogin()" class="px-6 py-3 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold inline-flex items-center gap-3">
+                <span class="text-lg">G</span><span>使用 Google 登入</span>
+            </button>`;
+        }
+        return;
+    }
     if (!window.google || !google.accounts?.id) {
         setTimeout(initGoogleSignIn, 200);
         return;
@@ -1021,6 +1040,10 @@ function initGoogleSignIn() {
 }
 
 function switchGoogleAccount() {
+    if (window.FirebaseV18?.isEnabled?.()) {
+        handleFirebaseLogin(true);
+        return;
+    }
     if (!window.google || !google.accounts?.id) return;
     google.accounts.id.disableAutoSelect();
     initGoogleSignIn();
@@ -1065,6 +1088,31 @@ function clearLoginBusy() {
     const switchBtn = document.getElementById("switch-google-btn");
     if (googleBtn) googleBtn.classList.remove("opacity-50", "pointer-events-none");
     if (switchBtn) switchBtn.disabled = false;
+}
+
+async function handleFirebaseLogin(forceSwitch) {
+    const errEl = document.getElementById("login-error");
+    try {
+        setLoginBusy(forceSwitch ? "正在切換 Google 帳號..." : "正在開啟 Google 登入...");
+        const user = await window.FirebaseV18.signInWithGoogle();
+        const email = (user.email || "").toLowerCase().trim();
+        if (!email) throw new Error("無法取得 Google Email");
+        setLoginBusy("帳號驗證中，請稍候...");
+        let res = await window.FirebaseV18.findStudentByEmail(email);
+        if (!res || res.exists === false) {
+            res = await postGAS({ action: "getStudentProfile", email });
+        }
+        if (res.status && res.status !== "ok") throw new Error(res.message || "帳號驗證失敗");
+        if (res.exists || res.studentId) {
+            setLoginBusy("正在建立登入狀態...");
+            await completeLogin(res.studentId, res.name, email);
+        } else {
+            throw new Error(res.message || "查無學生資料，請確認此 Email 是否已在學生名單");
+        }
+    } catch(e) {
+        clearLoginBusy();
+        showErr(errEl, "Google 登入失敗：" + e.message);
+    }
 }
 
 async function handleGoogleCallback(response) {
@@ -1606,12 +1654,12 @@ function renderReviewList() {
                 textCls = "text-green-700 font-semibold";
                 prefix  = `<span class="inline-block w-6 text-center text-green-600 mr-1">✓</span>`;
                 suffix  = isUserPick
-                    ? ` <span class="text-green-600 text-sm ml-2">(正確答案／你的作答)</span>`
-                    : ` <span class="text-green-600 text-sm ml-2">(正確答案)</span>`;
+                    ? ` <span class="text-green-600 text-sm ml-2">(答案／你選)</span>`
+                    : ` <span class="text-green-600 text-sm ml-2">(答案)</span>`;
             } else if (isUserPick) {
                 textCls = "text-red-600 font-semibold";
                 prefix  = `<span class="inline-block w-6 text-center text-red-500 mr-1">✗</span>`;
-                suffix  = ` <span class="text-red-500 text-sm ml-2">(你的作答)</span>`;
+                suffix  = ` <span class="text-red-500 text-sm ml-2">(你選)</span>`;
             }
             optsHtml += `<div class="${textCls} flex items-start"><div class="shrink-0">${prefix}</div><div>${optText}${suffix}</div></div>`;
         });
@@ -1789,11 +1837,11 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
                 if (isCorrectOpt) {
                     cls = "border-green-300 bg-green-50 text-green-700 font-bold";
                     mark = "✓";
-                    note = isUserPick ? "正確答案／你的作答" : "正確答案";
+                    note = isUserPick ? "答案／你選" : "答案";
                 } else if (isUserPick) {
                     cls = "border-red-300 bg-red-50 text-red-600 font-semibold";
                     mark = "✗";
-                    note = "你的作答";
+                    note = "你選";
                 }
                 return `<div class="rounded-lg border px-3 py-2 text-sm ${cls}">
                     <span class="inline-block w-5 text-center mr-1">${mark}</span>
@@ -1807,9 +1855,6 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
                 </div>`;
             }
         }
-
-        // 正確答案
-        document.getElementById("fc-answer").textContent = q.ans || "（無答案資料）";
 
         // 解析
         const expWrap = document.getElementById("fc-exp-wrap");
@@ -2490,7 +2535,22 @@ async function startCountFlashcards(count) {
     show("flashcard-loading-section");
     if (!(await verifySessionOnce())) return;
     try {
-        const res = await postGAS({
+        let res = null;
+        if (window.FirebaseV18?.isEnabled?.()) {
+            try {
+                res = await window.FirebaseV18.getQuizByCount({
+                    count,
+                    studentId,
+                    name: studentName,
+                    mode: "閃卡",
+                    flashcard: true,
+                    excludeIds: [...sessionAnsweredIds]
+                });
+            } catch (fbErr) {
+                console.warn("[v1.8] Firebase 抽閃卡失敗，回退 GAS：", fbErr);
+            }
+        }
+        if (!res) res = await postGAS({
             action: "getQuizByCount",
             count,
             studentId,
@@ -2624,7 +2684,21 @@ async function startCountQuiz(count) {
     show("submitting-section");
 
     try {
-        const res = await postGAS({
+        let res = null;
+        if (window.FirebaseV18?.isEnabled?.()) {
+            try {
+                res = await window.FirebaseV18.getQuizByCount({
+                    count,
+                    studentId,
+                    name: studentName,
+                    mode: "綜合練習",
+                    excludeIds: [...sessionAnsweredIds]
+                });
+            } catch (fbErr) {
+                console.warn("[v1.8] Firebase 抽題失敗，回退 GAS：", fbErr);
+            }
+        }
+        if (!res) res = await postGAS({
             action: "getQuizByCount",
             count,
             studentId,
@@ -2736,7 +2810,13 @@ async function postGAS(obj) {
         headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify(obj)
     });
-    return await res.json();
+    const data = await res.json();
+    if (obj?.action === "submitAnswerDetail" && window.FirebaseV18?.isEnabled?.()) {
+        window.FirebaseV18.mirrorAnswerDetail(obj).catch(err => {
+            console.warn("[v1.8] Firestore 作答明細鏡像失敗：", err);
+        });
+    }
+    return data;
 }
 // ── 重複登入報告 ──
 let dupLoginLoaded = false;

@@ -7,6 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="firebase-v18.js"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -365,7 +370,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.71 ／ 適配 GAS v10-714">v1.71</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.8 ／ 適配 GAS v10-714">v1.8</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -784,10 +789,16 @@
                 </div>
 
                 <!-- 儲存按鈕 -->
-                <button id="settings-save-btn" onclick="saveCompletionSettings()"
-                    class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-8 py-3 rounded-xl transition">
-                    💾 儲存設定
-                </button>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button id="settings-save-btn" onclick="saveCompletionSettings()"
+                        class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-8 py-3 rounded-xl transition">
+                        💾 儲存設定
+                    </button>
+                    <button id="firebase-sync-btn" onclick="syncFirebaseV18()"
+                        class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 py-3 rounded-xl transition">
+                        🔥 同步到 Firebase
+                    </button>
+                </div>
                 <p id="settings-save-status" class="text-sm mt-3 font-medium hidden"></p>
             </div>
 
@@ -3623,6 +3634,39 @@ async function saveCompletionSettings() {
         status.classList.remove("hidden");
     } finally {
         btn.disabled = false; btn.textContent = "💾 儲存設定";
+    }
+}
+
+async function syncFirebaseV18() {
+    const btn = document.getElementById("firebase-sync-btn");
+    const status = document.getElementById("settings-save-status");
+    const oldText = btn ? btn.textContent : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "同步中...";
+    }
+    try {
+        const res = await postGAS({ action: "syncFirebaseV18" });
+        if (res.status === "needs_config") {
+            status.textContent = "Firebase 尚未完成後端設定：請在 GAS Script Properties 加入 FIREBASE_PROJECT_ID、FIREBASE_CLIENT_EMAIL、FIREBASE_PRIVATE_KEY。同步資料包已可由 getFirebaseBootstrap 取得。";
+            status.className = "text-sm mt-3 font-medium text-amber-600";
+            status.classList.remove("hidden");
+            return;
+        }
+        if (res.status !== "ok") throw new Error(res.message || "同步失敗");
+        const c = res.counts || {};
+        status.textContent = `✓ Firebase 同步完成：題目 ${c.questions || 0} 筆、學生 ${c.students || 0} 筆、分類 ${c.topics || 0} 個。`;
+        status.className = "text-sm mt-3 font-medium text-green-600";
+        status.classList.remove("hidden");
+    } catch(e) {
+        status.textContent = "Firebase 同步失敗：" + e.message;
+        status.className = "text-sm mt-3 font-medium text-red-500";
+        status.classList.remove("hidden");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = oldText || "🔥 同步到 Firebase";
+        }
     }
 }
 

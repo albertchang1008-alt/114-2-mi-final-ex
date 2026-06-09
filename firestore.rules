@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /system/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /rankingCaches/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /students/{studentId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /answerDetails/{docId} {
+      allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
+      allow read, update, delete: if false;
+    }
+
+    match /answerBatches/{docId} {
+      allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
+      allow read, update, delete: if false;
+    }
+  }
+}
