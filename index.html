@@ -748,7 +748,7 @@
 <!-- ══════════════════════════════════════════ -->
 <script>
 // ★ 將此 URL 換成你的 GAS Webapp URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyYUJsOv4sgP7Uw-uqEVtPTXxVnZ92KizOS5BmYjF5fqhTYVvVh0I69gAYm90Z6Z1Lp/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyTOPuOCCen3Jqu_vCMaK67ssjBgVUdalCOi4rE_9w8wHzNwXLwPtpGcuBx91ilUfyP/exec';
 const CLIENT_ID = "768847881639-oh5mkl8qh9ij2c4a2f4janarcsoebq48.apps.googleusercontent.com";
 const ALLOWED_EMAIL_DOMAIN = "ctcn.edu.tw";
 
@@ -1171,7 +1171,7 @@ function initGoogleSignIn() {
         client_id: CLIENT_ID,
         hd: ALLOWED_EMAIL_DOMAIN,
         callback: handleGoogleCallback,
-        auto_select: false,
+        auto_select: true,
         cancel_on_tap_outside: false
     });
     const btn = document.getElementById("google-signin-btn");
@@ -1180,6 +1180,9 @@ function initGoogleSignIn() {
         google.accounts.id.renderButton(btn, {
             theme: "outline", size: "large", text: "signin_with", shape: "pill", width: 280
         });
+    }
+    if (!isLoggedIn) {
+        google.accounts.id.prompt(() => {});
     }
 }
 
@@ -1249,13 +1252,7 @@ async function handleGoogleCallback(response) {
             setLoginBusy("正在建立登入狀態...");
             await completeLogin(res.studentId, res.name, email);
         } else {
-            clearLoginBusy();
-            studentEmail = email;
-            document.getElementById("reg-email-display").textContent = email;
-            document.getElementById("reg-name-input").value = profile.name || "";
-            hide("login-section");
-            show("register-section");
-            setTimeout(() => document.getElementById("reg-name-input").focus(), 100);
+            throw new Error(res.message || "查無學生資料，請確認是否使用學校帳號，或聯絡老師");
         }
     } catch(e) {
         clearLoginBusy();
