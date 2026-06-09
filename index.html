@@ -251,6 +251,11 @@
                 <p class="text-xs text-gray-400 font-semibold mb-1 uppercase tracking-wider">你的選擇</p>
                 <p id="fc-selected-answer" class="text-gray-700 font-semibold leading-snug"></p>
             </div>
+            <!-- 完整選項 -->
+            <div class="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+                <p class="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">全部選項</p>
+                <div id="fc-back-options" class="space-y-2"></div>
+            </div>
             <!-- 正確答案 -->
             <div class="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-3">
                 <p class="text-xs text-sky-500 font-semibold mb-1 uppercase tracking-wider">正確答案</p>
@@ -481,7 +486,6 @@
 // ★ 將此 URL 換成你的 GAS Webapp URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbyTOPuOCCen3Jqu_vCMaK67ssjBgVUdalCOi4rE_9w8wHzNwXLwPtpGcuBx91ilUfyP/exec';
 const CLIENT_ID = "768847881639-oh5mkl8qh9ij2c4a2f4janarcsoebq48.apps.googleusercontent.com";
-const ALLOWED_EMAIL_DOMAIN = "ctcn.edu.tw";
 
 // ★ v1.66 Session Token（只用於記錄，不再輪詢驗證）
 let sessionToken   = "";
@@ -640,6 +644,33 @@ function escapeHTML(value) {
         "\"": "&quot;",
         "'": "&#39;"
     }[ch]));
+}
+
+function normalizeAnswerText(value) {
+    return String(value ?? "")
+        .replace(/^([1-4]|[A-D])[.\-、\s]*/i, "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+}
+
+function findCorrectOptionIndex(options, correctText) {
+    const cleanCorrect = normalizeAnswerText(correctText);
+    if (!cleanCorrect) return -1;
+    return (options || []).findIndex(opt => normalizeAnswerText(opt) === cleanCorrect);
+}
+
+function buildAnswerIntegrity(options, correctText) {
+    const correctIndex = findCorrectOptionIndex(options, correctText);
+    return {
+        correctIndex,
+        ok: !!correctText && correctIndex !== -1,
+        message: !correctText
+            ? "此題沒有正確答案資料"
+            : correctIndex === -1
+                ? "正確答案不在選項中，請檢查題庫答案欄與選項文字"
+                : ""
+    };
 }
 
 function renderLoginNotice() {
@@ -973,7 +1004,6 @@ function initGoogleSignIn() {
     }
     google.accounts.id.initialize({
         client_id: CLIENT_ID,
-        hd: ALLOWED_EMAIL_DOMAIN,
         callback: handleGoogleCallback,
         auto_select: true,
         cancel_on_tap_outside: false
@@ -995,7 +1025,7 @@ function switchGoogleAccount() {
     google.accounts.id.disableAutoSelect();
     initGoogleSignIn();
     const errEl = document.getElementById("login-error");
-    showErr(errEl, "請在 Google 彈窗中選擇 @" + ALLOWED_EMAIL_DOMAIN + " 帳號；按鈕上顯示的預設帳號不代表最後登入帳號。");
+    showErr(errEl, "請在 Google 彈窗中選擇已列入學生名單的 Email；按鈕上顯示的預設帳號不代表最後登入帳號。");
 }
 
 function decodeJwtPayload(credential) {
@@ -1043,10 +1073,10 @@ async function handleGoogleCallback(response) {
         setLoginBusy("已選定 Google 帳號，正在登入...");
         const profile = decodeJwtPayload(response.credential);
         const email = (profile.email || "").toLowerCase().trim();
-        if (!email || !email.endsWith("@" + ALLOWED_EMAIL_DOMAIN)) {
+        if (!email) {
             clearLoginBusy();
             if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
-            showErr(errEl, "請使用 @" + ALLOWED_EMAIL_DOMAIN + " 帳號登入（目前：" + (email || "未知") + "）。請按「切換 Google 帳號」後選學校帳號。");
+            showErr(errEl, "無法取得 Google Email，請按「切換 Google 帳號」後重試。");
             return;
         }
         setLoginBusy("帳號驗證中，請稍候...");
@@ -1056,7 +1086,7 @@ async function handleGoogleCallback(response) {
             setLoginBusy("正在建立登入狀態...");
             await completeLogin(res.studentId, res.name, email);
         } else {
-            throw new Error(res.message || "查無學生資料，請確認是否使用學校帳號，或聯絡老師");
+            throw new Error(res.message || "查無學生資料，請確認此 Email 是否已在學生名單，或聯絡老師");
         }
     } catch(e) {
         clearLoginBusy();
@@ -1448,6 +1478,7 @@ async function submitQuiz() {
                 q.serverCorrectText   = r.correctText  || "";
                 q.serverCorrectIndex  = r.correctIndex ?? -1; // ★ GAS 回傳的正確 index
                 q.serverExp           = r.exp || "尚無解析";
+                q.answerIntegrity     = r.answerIntegrity || buildAnswerIntegrity(q.shuffledOpts, q.serverCorrectText);
                 if (r.correct) scoreCorrect++;
             }
             sessionAnsweredIds.add(q.id);
@@ -1585,6 +1616,11 @@ function renderReviewList() {
             optsHtml += `<div class="${textCls} flex items-start"><div class="shrink-0">${prefix}</div><div>${optText}${suffix}</div></div>`;
         });
         optsHtml += "</div>";
+        const integrity = q.answerIntegrity || buildAnswerIntegrity(q.shuffledOpts, q.serverCorrectText);
+        const integrityHtml = integrity.ok ? "" : `
+            <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 mb-3 text-sm font-semibold">
+                ⚠ ${escapeHTML(integrity.message)}
+            </div>`;
 
         const div = document.createElement("div");
         div.className = isOk ? "bg-green-50 p-5 rounded-xl border border-green-200" : "bg-red-50 p-5 rounded-xl border border-red-200";
@@ -1594,6 +1630,7 @@ function renderReviewList() {
             </div>
             <div class="font-bold text-gray-800 text-lg mb-3"><span class="text-gray-400 text-sm mr-1">Q${idx+1}.</span>${q.q}</div>
             ${optsHtml}
+            ${integrityHtml}
             <div class="text-gray-700 text-sm md:text-base leading-relaxed bg-white/60 p-4 rounded-lg shadow-sm">
                 <span class="font-bold text-blue-600">💡 解析：</span>${q.serverExp}
                 <span class="text-xs text-gray-400 block mt-2 pt-2 border-t border-gray-100">(${q.top})</span>
@@ -1695,15 +1732,13 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
     // 鎖定所有選項
     document.querySelectorAll(".fc-opt-btn").forEach(b => { b.onclick = null; });
 
-    const cleanSel  = selectedOpt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
-    const cleanCorr = (q.ans||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+    const cleanSel  = normalizeAnswerText(selectedOpt);
+    const cleanCorr = normalizeAnswerText(q.ans || "");
     const isCorrect = cleanSel === cleanCorr;
     const answerSec = q._answerStartTime > 0 ? Math.round((Date.now() - q._answerStartTime) / 1000) : null;
 
-    // ★ 直接找出正確選項的 index，不逐一文字比對
-    const correctIndex = q.shuffledOpts.findIndex(opt =>
-        opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ") === cleanCorr
-    );
+    const integrity = buildAnswerIntegrity(q.shuffledOpts, q.ans || "");
+    const correctIndex = integrity.correctIndex;
 
     document.querySelectorAll(".fc-opt-btn").forEach((b, i) => {
         if (i === correctIndex) {
@@ -1740,6 +1775,37 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
         } else {
             backImgArea.classList.add("hidden");
             backImgEl.src = "";
+        }
+
+        // 全部選項
+        const backOptions = document.getElementById("fc-back-options");
+        if (backOptions) {
+            backOptions.innerHTML = (q.shuffledOpts || []).map((opt, i) => {
+                const isCorrectOpt = i === correctIndex;
+                const isUserPick = normalizeAnswerText(opt) === cleanSel;
+                let cls = "border-gray-200 bg-gray-50 text-gray-700";
+                let mark = "•";
+                let note = "";
+                if (isCorrectOpt) {
+                    cls = "border-green-300 bg-green-50 text-green-700 font-bold";
+                    mark = "✓";
+                    note = isUserPick ? "正確答案／你的作答" : "正確答案";
+                } else if (isUserPick) {
+                    cls = "border-red-300 bg-red-50 text-red-600 font-semibold";
+                    mark = "✗";
+                    note = "你的作答";
+                }
+                return `<div class="rounded-lg border px-3 py-2 text-sm ${cls}">
+                    <span class="inline-block w-5 text-center mr-1">${mark}</span>
+                    <span>${escapeHTML(opt)}</span>
+                    ${note ? `<span class="ml-2 text-xs opacity-80">(${note})</span>` : ""}
+                </div>`;
+            }).join("");
+            if (!integrity.ok) {
+                backOptions.innerHTML += `<div class="rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-3 py-2 text-xs font-semibold">
+                    ⚠ ${escapeHTML(integrity.message)}
+                </div>`;
+            }
         }
 
         // 正確答案
