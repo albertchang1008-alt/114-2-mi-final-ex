@@ -92,12 +92,30 @@
     if (!init()) return null;
     if (boot) return boot;
     var c = cfg.collections || {};
-    var questionsSnap = await db.collection(c.questions || "questions").get();
+    
     var questions = [];
-    questionsSnap.forEach(function (doc) {
-      var q = normalizeQuestion(doc);
-      if (q.id && q.q) questions.push(q);
-    });
+    try {
+      var questionsDoc = await docPath(c.questionsDocument || "system/questions").get();
+      if (questionsDoc.exists) {
+        var qData = questionsDoc.data() || {};
+        var qList = qData.questions || [];
+        qList.forEach(function (q) {
+          var normalized = normalizeQuestion(q);
+          if (normalized.id && normalized.q) questions.push(normalized);
+        });
+      }
+    } catch (err) {
+      console.warn("[Firebase v1.81] 讀取題庫打包文件失敗，嘗試回退讀取舊 questions 集合：", err);
+      try {
+        var questionsSnap = await db.collection(c.questions || "questions").get();
+        questionsSnap.forEach(function (doc) {
+          var q = normalizeQuestion(doc);
+          if (q.id && q.q) questions.push(q);
+        });
+      } catch (fallbackErr) {
+        console.error("[Firebase v1.81] 舊 questions 集合讀取也失敗：", fallbackErr);
+      }
+    }
     if (!questions.length) return null;
 
     var settings = {};
@@ -254,6 +272,13 @@
     var now = serverTimestamp();
     var duration = Number(payload.duration || 0);
 
+    // 優化寫入：將作答明細打包存入 details 欄位，並將 createdAt 改用 ISO 字串
+    var cleanDetails = details.map(function (detail, idx) {
+      var d = normalizeDetail(detail, { ...payload, email: email }, idx, batchId);
+      d.createdAt = new Date().toISOString(); // 避免在陣列中使用 serverTimestamp 限制
+      return d;
+    });
+
     batch.set(db.collection(c.answerBatches || "answerBatches").doc(batchId), {
       batchId: batchId,
       email: email,
@@ -274,76 +299,11 @@
       source: "student-firebase-v1.81",
       startedAtClient: payload.startedAt || null,
       endedAtClient: payload.endedAt || new Date().toISOString(),
-      createdAt: now
+      createdAt: now,
+      details: cleanDetails // 嵌入作答明細陣列，省去額外集合寫入
     });
 
-    details.forEach(function (detail, idx) {
-      var d = normalizeDetail(detail, { ...payload, email: email }, idx, batchId);
-      var qid = safeDocId(d.questionId || ("Q" + idx));
-      var detailId = safeDocId([batchId, String(idx + 1).padStart(3, "0"), qid].join("_"));
-      batch.set(db.collection(c.answerDetails || "answerDetails").doc(detailId), d);
-
-      var progressId = safeDocId([(payload.studentId || email), qid].join("_"));
-      var answerSec = Number(d.answerSec || 0);
-      batch.set(db.collection(c.studentProgress || "studentProgress").doc(progressId), {
-        email: email,
-        studentId: payload.studentId || "",
-        name: payload.name || "",
-        className: payload.className || "",
-        questionId: d.questionId || "",
-        topic: d.topic || "",
-        questionType: d.questionType || "",
-        cogType: d.cogType || "",
-        attemptCount: increment(1),
-        correctCount: increment(d.isCorrect ? 1 : 0),
-        wrongCount: increment(d.isCorrect ? 0 : 1),
-        totalAnswerSec: increment(answerSec),
-        lastAnswerSec: d.answerSec,
-        lastCorrect: d.isCorrect,
-        lastSelectedText: d.selectedText,
-        lastCorrectText: d.correctText,
-        lastBatchId: batchId,
-        lastMode: payload.mode || "",
-        questionBankVersion: payload.questionBankVersion || "",
-        updatedAt: now
-      }, { merge: true });
-
-      var wrongId = safeDocId([(payload.studentId || email), qid].join("_"));
-      var wrongRef = db.collection(c.wrongQuestions || "wrongQuestions").doc(wrongId);
-      if (d.isCorrect) {
-        batch.set(wrongRef, {
-          email: email,
-          studentId: payload.studentId || "",
-          name: payload.name || "",
-          className: payload.className || "",
-          questionId: d.questionId || "",
-          topic: d.topic || "",
-          resolved: true,
-          resolvedAt: now,
-          lastBatchId: batchId,
-          updatedAt: now
-        }, { merge: true });
-      } else {
-        batch.set(wrongRef, {
-          email: email,
-          studentId: payload.studentId || "",
-          name: payload.name || "",
-          className: payload.className || "",
-          questionId: d.questionId || "",
-          questionText: d.questionText || "",
-          topic: d.topic || "",
-          questionType: d.questionType || "",
-          cogType: d.cogType || "",
-          selectedText: d.selectedText,
-          correctText: d.correctText,
-          answerSec: d.answerSec,
-          resolved: false,
-          wrongCount: increment(1),
-          lastBatchId: batchId,
-          updatedAt: now
-        }, { merge: true });
-      }
-    });
+    // 已將所有資料整併，無需再針對 answerDetails, studentProgress, wrongQuestions 進行迴圈寫入，大幅降低寫入次數。
 
     await batch.commit();
     return { status: "ok", batchId: batchId, writtenDetails: details.length };

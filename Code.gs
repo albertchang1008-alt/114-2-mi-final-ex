@@ -328,14 +328,19 @@ function handleSyncFirebaseV18(payload) {
   var token = firebaseAccessTokenFromServiceAccount();
   var writes = [];
   writes.push({ update: { name: firestoreDocName(projectId, "system", "main"), fields: firebaseFields(data.settings) } });
-  data.questions.forEach(function(q) {
-    writes.push({ update: { name: firestoreDocName(projectId, "questions", q.id), fields: firebaseFields(q) } });
-  });
+  
+  // 優化讀取：將所有題目打包成單一文件寫入 system/questions
+  var questionsPayload = {
+    updatedAt: localNow(),
+    questions: data.questions
+  };
+  writes.push({ update: { name: firestoreDocName(projectId, "system", "questions"), fields: firebaseFields(questionsPayload) } });
+
   data.students.forEach(function(s) {
     writes.push({ update: { name: firestoreDocName(projectId, "students", s.studentId), fields: firebaseFields(s) } });
   });
   firebaseBatchWrite(projectId, token, writes);
-  return jsonResponse({ status: "ok", message: "Firebase 同步完成", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
+  return jsonResponse({ status: "ok", message: "Firebase 同步完成 (已優化為單一題目文件)", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
 }
 
 // ── 掃描題庫建立分類清單，並更新快取 Sheet ──
