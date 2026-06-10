@@ -251,11 +251,6 @@
                 </div>
                 <p id="fc-back-question" class="text-gray-800 font-semibold leading-relaxed"></p>
             </div>
-            <!-- 學生選擇 -->
-            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3">
-                <p class="text-xs text-gray-400 font-semibold mb-1 uppercase tracking-wider">你的選擇</p>
-                <p id="fc-selected-answer" class="text-gray-700 font-semibold leading-snug"></p>
-            </div>
             <!-- 完整選項 -->
             <div class="bg-white border border-gray-200 rounded-xl p-4 mb-3">
                 <p class="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">全部選項</p>
@@ -1659,12 +1654,12 @@ function renderReviewList() {
                 textCls = "text-green-700 font-semibold";
                 prefix  = `<span class="inline-block w-6 text-center text-green-600 mr-1">✓</span>`;
                 suffix  = isUserPick
-                    ? ` <span class="text-green-600 text-sm ml-2">(答案／你選)</span>`
-                    : ` <span class="text-green-600 text-sm ml-2">(答案)</span>`;
+                    ? ` <span class="text-green-600 text-sm ml-2">(正確答案／本次選擇)</span>`
+                    : ` <span class="text-green-600 text-sm ml-2">(正確答案)</span>`;
             } else if (isUserPick) {
                 textCls = "text-red-600 font-semibold";
                 prefix  = `<span class="inline-block w-6 text-center text-red-500 mr-1">✗</span>`;
-                suffix  = ` <span class="text-red-500 text-sm ml-2">(你選)</span>`;
+                suffix  = ` <span class="text-red-500 text-sm ml-2">(本次選擇)</span>`;
             }
             optsHtml += `<div class="${textCls} flex items-start"><div class="shrink-0">${prefix}</div><div>${optText}${suffix}</div></div>`;
         });
@@ -1817,9 +1812,8 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
             banner.className = "rounded-xl p-4 mb-4 text-center font-bold text-lg bg-red-50 border-2 border-red-300 text-red-600";
         }
 
-        // 題目與學生選擇
+        // 題目
         document.getElementById("fc-back-question").textContent = q.q || "";
-        document.getElementById("fc-selected-answer").textContent = selectedOpt || "未選擇";
         const backImgArea = document.getElementById("fc-back-img-area");
         const backImgEl   = document.getElementById("fc-back-img");
         if (q.isImage && q.imgUrl) {
@@ -1842,20 +1836,20 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
                 if (isCorrectOpt) {
                     cls = "border-green-300 bg-green-50 text-green-700 font-bold";
                     mark = "✓";
-                    note = isUserPick ? "答案／你選" : "答案";
+                    note = isUserPick ? "正確答案／本次選擇" : "正確答案";
                 } else if (isUserPick) {
                     cls = "border-red-300 bg-red-50 text-red-600 font-semibold";
                     mark = "✗";
-                    note = "你選";
+                    note = "本次選擇";
                 }
-                return `<div class="rounded-lg border px-3 py-2 text-sm ${cls}">
-                    <span class="inline-block w-5 text-center mr-1">${mark}</span>
+                return `<div class="rounded-lg border px-4 py-3 text-base md:text-lg leading-relaxed ${cls}">
+                    <span class="inline-block w-6 text-center mr-2">${mark}</span>
                     <span>${escapeHTML(opt)}</span>
-                    ${note ? `<span class="ml-2 text-xs opacity-80">(${note})</span>` : ""}
+                    ${note ? `<span class="ml-2 text-sm opacity-80">(${note})</span>` : ""}
                 </div>`;
             }).join("");
             if (!integrity.ok) {
-                backOptions.innerHTML += `<div class="rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-3 py-2 text-xs font-semibold">
+                backOptions.innerHTML += `<div class="rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-4 py-3 text-sm font-semibold">
                     ⚠ ${escapeHTML(integrity.message)}
                 </div>`;
             }
