@@ -1103,6 +1103,29 @@ function bootAdminPage() {
     hide("ranking-section");
     hide("login-section");
     openAdminModal();
+    // 背景靜默載入題庫設定與班級列表，避免後台設定呈現空白
+    fetchQuestionBankBackground();
+}
+
+async function fetchQuestionBankBackground() {
+    try {
+        const res = await fetch(GAS_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const result = await res.json();
+        if (result.status === "success") {
+            topicsData = result.topics || [];
+            completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
+            allClassList = result.allClassList || [];
+            initCampusDeadlines(normalizeCampusDeadlines(result));
+            // 若當前已切換到設定頁，重新渲染以顯示資料
+            const settingsTab = document.getElementById("tab-settings");
+            if (settingsTab && settingsTab.classList.contains("active")) {
+                renderSettingsTab(completionSettings);
+            }
+        }
+    } catch (err) {
+        console.warn("[後台] 背景載入設定失敗：", err);
+    }
 }
 
 function isAdminPage() {
