@@ -648,10 +648,33 @@ function normalizeAnswerText(value) {
         .replace(/\s+/g, " ");
 }
 
+function cleanPrefix(value) {
+    return String(value ?? "")
+        .replace(/^\s*(?:[\(（\[［][A-Da-d1-4][\)）\]］]|[A-Da-d1-4][\.\-、：\s]+)\s*/, "")
+        .trim();
+}
+
 function findCorrectOptionIndex(options, correctText) {
     const cleanCorrect = normalizeAnswerText(correctText);
     if (!cleanCorrect) return -1;
-    return (options || []).findIndex(opt => normalizeAnswerText(opt) === cleanCorrect);
+    
+    // 1. 先做完全一致的比對
+    let idx = (options || []).findIndex(opt => normalizeAnswerText(opt) === cleanCorrect);
+    if (idx !== -1) return idx;
+    
+    // 2. 如果正確答案是單一字母 A-D 或 1-4，直接對應到索引
+    if (cleanCorrect.length === 1) {
+        const up = cleanCorrect.toUpperCase();
+        const letterIdx = ["A", "B", "C", "D"].indexOf(up);
+        if (letterIdx !== -1 && letterIdx < options.length) return letterIdx;
+        const numIdx = ["1", "2", "3", "4"].indexOf(cleanCorrect);
+        if (numIdx !== -1 && numIdx < options.length) return numIdx;
+    }
+    
+    // 3. 去除前綴後的語意比對
+    const cleanCorrectNoPrefix = normalizeAnswerText(cleanPrefix(correctText));
+    idx = (options || []).findIndex(opt => normalizeAnswerText(cleanPrefix(opt)) === cleanCorrectNoPrefix);
+    return idx;
 }
 
 function buildAnswerIntegrity(options, correctText) {
@@ -1509,7 +1532,7 @@ function judgeQuizSessionLocally() {
         const selectedText = q.userSelectedText || (q.shuffledOpts[q.userSelectedIndex] ?? "未作答");
         const correctText = q.ans || "";
         const integrity = buildAnswerIntegrity(q.shuffledOpts, correctText);
-        const isCorrect = normalizeAnswerText(selectedText) === normalizeAnswerText(correctText);
+        const isCorrect = integrity.ok && q.userSelectedIndex === integrity.correctIndex;
         q.userSelectedText = selectedText;
         q.isCorrectlyAnswered = isCorrect;
         q.serverCorrectText = correctText;
@@ -1780,13 +1803,12 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
     // 鎖定所有選項
     document.querySelectorAll(".fc-opt-btn").forEach(b => { b.onclick = null; });
 
-    const cleanSel  = normalizeAnswerText(selectedOpt);
-    const cleanCorr = normalizeAnswerText(q.ans || "");
-    const isCorrect = cleanSel === cleanCorr;
-    const answerSec = q._answerStartTime > 0 ? Math.round((Date.now() - q._answerStartTime) / 1000) : null;
-
     const integrity = buildAnswerIntegrity(q.shuffledOpts, q.ans || "");
     const correctIndex = integrity.correctIndex;
+    const selectedIdx = (q.shuffledOpts || []).indexOf(selectedOpt);
+    const isCorrect = integrity.ok && selectedIdx === correctIndex;
+    const cleanSel  = normalizeAnswerText(selectedOpt);
+    const answerSec = q._answerStartTime > 0 ? Math.round((Date.now() - q._answerStartTime) / 1000) : null;
 
     document.querySelectorAll(".fc-opt-btn").forEach((b, i) => {
         if (i === correctIndex) {
