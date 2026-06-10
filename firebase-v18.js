@@ -23,13 +23,32 @@
       auth = window.firebase.auth(app);
       return true;
     } catch (err) {
-      console.warn("[Firebase v1.8] 初始化失敗，改用 GAS：", err);
+      console.warn("[Firebase v1.81] 初始化失敗：", err);
       return false;
     }
   }
 
   function isEnabled() {
     return init();
+  }
+
+  function currentUserEmail() {
+    return init() && auth.currentUser ? String(auth.currentUser.email || "").toLowerCase().trim() : "";
+  }
+
+  function safeDocId(value) {
+    return String(value || "")
+      .trim()
+      .replace(/[^\w.-]/g, "_")
+      .slice(0, 500) || String(Date.now());
+  }
+
+  function serverTimestamp() {
+    return window.firebase.firestore.FieldValue.serverTimestamp();
+  }
+
+  function increment(n) {
+    return window.firebase.firestore.FieldValue.increment(Number(n) || 0);
   }
 
   function docPath(path) {
@@ -87,13 +106,13 @@
       var settingsDoc = await docPath(c.settings || "system/main").get();
       if (settingsDoc.exists) settings = settingsDoc.data() || {};
     } catch (err) {
-      console.warn("[Firebase v1.8] 設定讀取失敗：", err);
+      console.warn("[Firebase v1.81] 設定讀取失敗：", err);
     }
     try {
       var rankingDoc = await docPath(c.homeRanking || "rankingCaches/home").get();
       if (rankingDoc.exists) rankingCache = rankingDoc.data() || null;
     } catch (err) {
-      console.warn("[Firebase v1.8] 排行快取讀取失敗：", err);
+      console.warn("[Firebase v1.81] 排行快取讀取失敗：", err);
     }
 
     boot = {
@@ -179,32 +198,210 @@
       data: picked,
       batchId: "FB_" + Date.now(),
       questionBankVersion: data.questionBankVersion || "",
-      settingsVersion: "firebase-v1.8"
+      settingsVersion: "firebase-v1.81"
     };
   }
 
-  async function mirrorAnswerDetail(detail) {
-    if (!init() || !auth.currentUser) return;
+  function buildBatchId(payload) {
+    return safeDocId(payload.batchId || [
+      "FB",
+      payload.studentId || "student",
+      payload.mode || "practice",
+      Date.now()
+    ].join("_"));
+  }
+
+  function normalizeDetail(detail, payload, idx, batchId) {
+    var isCorrect = detail.isCorrect === true;
+    return {
+      batchId: batchId,
+      email: payload.email || currentUserEmail(),
+      studentId: payload.studentId || "",
+      name: payload.name || "",
+      className: payload.className || "",
+      mode: payload.mode || "",
+      attempt: Number(payload.attempt || 1),
+      questionId: detail.questionId || "",
+      questionText: detail.questionText || "",
+      topic: detail.topic || "",
+      questionType: detail.questionType || "",
+      cogType: detail.cogType || "",
+      order: Number(detail.order || idx + 1),
+      selectedText: detail.selectedText || "未作答",
+      correctText: detail.correctText || "",
+      isCorrect: isCorrect,
+      answerSec: detail.answerSec === null || detail.answerSec === undefined ? null : Number(detail.answerSec) || 0,
+      source: detail.source || "firebase",
+      isFirstAttempt: detail.isFirstAttempt !== false,
+      questionBankVersion: payload.questionBankVersion || "",
+      settingsVersion: payload.settingsVersion || "",
+      createdAt: serverTimestamp()
+    };
+  }
+
+  async function submitAttempt(payload) {
+    if (!init()) throw new Error("Firebase 尚未啟用");
+    if (!auth.currentUser) throw new Error("尚未完成 Firebase Google 登入");
+    payload = payload || {};
     var c = cfg.collections || {};
-    var id = [
-      detail.batchId || "batch",
-      detail.studentId || auth.currentUser.uid,
-      detail.questionId || detail.qid || Date.now()
-    ].join("_").replace(/[^\w.-]/g, "_");
-    await db.collection(c.answerDetails || "answerDetails").doc(id).set({
-      ...detail,
-      email: auth.currentUser.email || "",
-      clientWrittenAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    var email = String(payload.email || auth.currentUser.email || "").toLowerCase().trim();
+    if (!email || email !== currentUserEmail()) throw new Error("登入帳號與作答資料不一致");
+    var details = Array.isArray(payload.details) ? payload.details : [];
+    if (!details.length) throw new Error("沒有可寫入的作答明細");
+
+    var batchId = buildBatchId(payload);
+    var batch = db.batch();
+    var now = serverTimestamp();
+    var duration = Number(payload.duration || 0);
+
+    batch.set(db.collection(c.answerBatches || "answerBatches").doc(batchId), {
+      batchId: batchId,
+      email: email,
+      studentId: payload.studentId || "",
+      name: payload.name || "",
+      className: payload.className || "",
+      topic: payload.topic || "",
+      mode: payload.mode || "",
+      attempt: Number(payload.attempt || 1),
+      questionCount: details.length,
+      score: Number(payload.score || 0),
+      correctCount: Number(payload.correctCount || 0),
+      wrongCount: Number(payload.wrongCount || 0),
+      duration: duration,
+      questionIds: details.map(function (d) { return d.questionId || ""; }).filter(Boolean),
+      questionBankVersion: payload.questionBankVersion || "",
+      settingsVersion: payload.settingsVersion || "",
+      source: "student-firebase-v1.81",
+      startedAtClient: payload.startedAt || null,
+      endedAtClient: payload.endedAt || new Date().toISOString(),
+      createdAt: now
+    });
+
+    details.forEach(function (detail, idx) {
+      var d = normalizeDetail(detail, { ...payload, email: email }, idx, batchId);
+      var qid = safeDocId(d.questionId || ("Q" + idx));
+      var detailId = safeDocId([batchId, String(idx + 1).padStart(3, "0"), qid].join("_"));
+      batch.set(db.collection(c.answerDetails || "answerDetails").doc(detailId), d);
+
+      var progressId = safeDocId([(payload.studentId || email), qid].join("_"));
+      var answerSec = Number(d.answerSec || 0);
+      batch.set(db.collection(c.studentProgress || "studentProgress").doc(progressId), {
+        email: email,
+        studentId: payload.studentId || "",
+        name: payload.name || "",
+        className: payload.className || "",
+        questionId: d.questionId || "",
+        topic: d.topic || "",
+        questionType: d.questionType || "",
+        cogType: d.cogType || "",
+        attemptCount: increment(1),
+        correctCount: increment(d.isCorrect ? 1 : 0),
+        wrongCount: increment(d.isCorrect ? 0 : 1),
+        totalAnswerSec: increment(answerSec),
+        lastAnswerSec: d.answerSec,
+        lastCorrect: d.isCorrect,
+        lastSelectedText: d.selectedText,
+        lastCorrectText: d.correctText,
+        lastBatchId: batchId,
+        lastMode: payload.mode || "",
+        questionBankVersion: payload.questionBankVersion || "",
+        updatedAt: now
+      }, { merge: true });
+
+      var wrongId = safeDocId([(payload.studentId || email), qid].join("_"));
+      var wrongRef = db.collection(c.wrongQuestions || "wrongQuestions").doc(wrongId);
+      if (d.isCorrect) {
+        batch.set(wrongRef, {
+          email: email,
+          studentId: payload.studentId || "",
+          name: payload.name || "",
+          className: payload.className || "",
+          questionId: d.questionId || "",
+          topic: d.topic || "",
+          resolved: true,
+          resolvedAt: now,
+          lastBatchId: batchId,
+          updatedAt: now
+        }, { merge: true });
+      } else {
+        batch.set(wrongRef, {
+          email: email,
+          studentId: payload.studentId || "",
+          name: payload.name || "",
+          className: payload.className || "",
+          questionId: d.questionId || "",
+          questionText: d.questionText || "",
+          topic: d.topic || "",
+          questionType: d.questionType || "",
+          cogType: d.cogType || "",
+          selectedText: d.selectedText,
+          correctText: d.correctText,
+          answerSec: d.answerSec,
+          resolved: false,
+          wrongCount: increment(1),
+          lastBatchId: batchId,
+          updatedAt: now
+        }, { merge: true });
+      }
+    });
+
+    await batch.commit();
+    return { status: "ok", batchId: batchId, writtenDetails: details.length };
+  }
+
+  function queueKey() {
+    return "quiz_v181_pending_attempts";
+  }
+
+  function readQueue() {
+    try { return JSON.parse(localStorage.getItem(queueKey()) || "[]"); }
+    catch (_) { return []; }
+  }
+
+  function writeQueue(items) {
+    localStorage.setItem(queueKey(), JSON.stringify(items || []));
+  }
+
+  async function flushQueue() {
+    var queue = readQueue();
+    if (!queue.length) return { status: "ok", flushed: 0 };
+    var remaining = [];
+    var flushed = 0;
+    for (var i = 0; i < queue.length; i++) {
+      try {
+        await submitAttempt(queue[i].payload);
+        flushed += 1;
+      } catch (err) {
+        remaining.push(queue[i]);
+      }
+    }
+    writeQueue(remaining);
+    return { status: "ok", flushed: flushed, remaining: remaining.length };
+  }
+
+  async function submitAttemptWithFallback(payload) {
+    try {
+      await flushQueue();
+      return await submitAttempt(payload);
+    } catch (err) {
+      var queue = readQueue();
+      queue.push({ payload: payload, queuedAt: new Date().toISOString(), error: err.message || String(err) });
+      writeQueue(queue.slice(-20));
+      console.warn("[Firebase v1.81] 作答暫存於本機，稍後重送：", err);
+      return { status: "queued", message: "已暫存在本機，稍後會自動重送" };
+    }
   }
 
   window.FirebaseV18 = {
     isEnabled: isEnabled,
     init: init,
+    currentUserEmail: currentUserEmail,
     loadBootstrap: loadBootstrap,
     signInWithGoogle: signInWithGoogle,
     findStudentByEmail: findStudentByEmail,
     getQuizByCount: getQuizByCount,
-    mirrorAnswerDetail: mirrorAnswerDetail
+    submitAttempt: submitAttempt,
+    submitAttemptWithFallback: submitAttemptWithFallback,
+    flushQueue: flushQueue
   };
 })();
