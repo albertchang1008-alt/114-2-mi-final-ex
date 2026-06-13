@@ -532,6 +532,7 @@ function doPost(e) {
     if (action === "getDuplicateLoginReport") return handleGetDuplicateLoginReport(payload);
     if (action === "getFirebaseBootstrap")   return handleGetFirebaseBootstrap(payload);
     if (action === "syncFirebaseV18")        return handleSyncFirebaseV18(payload);
+    if (action === "syncFirebaseToSheet")    return handleSyncFirebaseToSheet(payload);
     return jsonResponse({ status: "error", message: "未知的 action：" + action });
   } catch (err) {
     return jsonResponse({ status: "error", message: err.message });
@@ -3294,15 +3295,116 @@ function handleGetDuplicateLoginReport(payload) {
 // ─────────────────────────────────────────────
 // Action：syncFirebaseToSheet（從 Firebase 將成績與登入記錄拉回 Google Sheet 備份）
 // ─────────────────────────────────────────────
-function syncFirebaseToSheet() {
-  var props = PropertiesService.getScriptProperties();
-  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
-  if (!projectId) return;
-  var token = firebaseAccessTokenFromServiceAccount();
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var scoreSheet = getOrCreateScoreSheet(ss); // 需要確保有此 sheet
-  var loginSheet = getOrCreateLoginLogSheet(ss);
-  
-  // TODO: 完整的 REST API query 實作，可以之後再寫，因為現在首要任務是「不動到 Google Sheet」與前端 Firebase 化
+
+function firebaseFetchAllDocuments(projectId, token, collectionName) {
+  var baseUrl = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents/' + collectionName;
+  var allDocs = [];
+  var pageToken = '';
+  do {
+    var url = baseUrl + '?pageSize=1000';
+    if (pageToken) url += '&pageToken=' + encodeURIComponent(pageToken);
+    var res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() >= 300) throw new Error('Firestore 讀取失敗：' + res.getContentText());
+    var data = JSON.parse(res.getContentText());
+    if (data.documents) allDocs = allDocs.concat(data.documents);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return allDocs;
 }
+
+function parseFirestoreValue(v) {
+  if (!v) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return parseInt(v.integerValue, 10);
+  if ('doubleValue' in v) return parseFloat(v.doubleValue);
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('timestampValue' in v) return v.timestampValue;
+  if ('arrayValue' in v) {
+    var arr = v.arrayValue.values || [];
+    return arr.map(parseFirestoreValue);
+  }
+  if ('mapValue' in v) {
+    var obj = {};
+    var fields = v.mapValue.fields || {};
+    Object.keys(fields).forEach(function(k) { obj[k] = parseFirestoreValue(fields[k]); });
+    return obj;
+  }
+  if ('nullValue' in v) return null;
+  return v;
+}
+
+function parseFirestoreDoc(doc) {
+  var obj = {};
+  var fields = doc.fields || {};
+  Object.keys(fields).forEach(function(k) { obj[k] = parseFirestoreValue(fields[k]); });
+  return obj;
+}
+
+function handleSyncFirebaseToSheet(payload) {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty('FIREBASE_PROJECT_ID');
+  if (!projectId) return jsonResponse({ status: 'error', message: '尚未設定 FIREBASE_PROJECT_ID' });
+  try {
+    var token = firebaseAccessTokenFromServiceAccount();
+    var rawDocs = firebaseFetchAllDocuments(projectId, token, 'answerBatches');
+    var docs = rawDocs.map(parseFirestoreDoc);
+    
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var scoreSheet = getOrCreateScoreSheet(ss);
+    var detailSheet = getOrCreateDetailSheet(ss);
+    
+    var existingBatches = {};
+    if (scoreSheet.getLastRow() > 1) {
+      var scoreRows = scoreSheet.getDataRange().getValues();
+      var headers = scoreRows[0].map(function(h) { return h.toString().trim(); });
+      var bCol = findColIdx(headers, ['批次ID','batchId','批次']);
+      if (bCol !== -1) {
+        for (var i = 1; i < scoreRows.length; i++) {
+          var bid = scoreRows[i][bCol];
+          if (bid) existingBatches[bid.toString()] = true;
+        }
+      }
+    }
+    
+    var newScores = [];
+    var newDetails = [];
+    var newCount = 0;
+    
+    docs.sort(function(a,b) {
+      var ta = new Date(a.createdAt || a.endedAtClient || 0).getTime();
+      var tb = new Date(b.createdAt || b.endedAtClient || 0).getTime();
+      return ta - tb;
+    });
+    
+    docs.forEach(function(d) {
+      if (!d.batchId || existingBatches[d.batchId]) return;
+      var dt = d.createdAt || d.endedAtClient || new Date().toISOString();
+      newScores.push([
+        dt, d.studentId || '', d.name || '', d.topic || '', d.mode || '', d.attempt || 1, d.score || 0, d.correctCount || 0, d.wrongCount || 0, d.duration || 0, d.settingsVersion || '', d.questionBankVersion || '', d.batchId
+      ]);
+      if (d.details && Array.isArray(d.details)) {
+        d.details.forEach(function(det) {
+          newDetails.push([
+            dt, d.studentId || '', d.name || '', d.topic || '', d.mode || '', d.batchId,
+            det.questionId || '', det.questionType || '', det.cogType || '', det.source || '',
+            det.isCorrect ? '答對' : '答錯', det.selectedText || '', det.correctText || '', det.answerSec || 0
+          ]);
+        });
+      }
+      existingBatches[d.batchId] = true;
+      newCount++;
+    });
+    
+    if (newScores.length > 0) scoreSheet.getRange(scoreSheet.getLastRow() + 1, 1, newScores.length, newScores[0].length).setValues(newScores);
+    if (newDetails.length > 0) detailSheet.getRange(detailSheet.getLastRow() + 1, 1, newDetails.length, newDetails[0].length).setValues(newDetails);
+    
+    return jsonResponse({ status: 'ok', message: '同步完成，共新增 ' + newCount + ' 筆測驗紀錄。', newCount: newCount });
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: err.message });
+  }
+}
+
