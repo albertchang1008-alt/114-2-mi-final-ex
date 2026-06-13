@@ -449,9 +449,12 @@
         }
         
         if (docMs < cutoff.getTime()) return;
-        if (topic !== "綜合練習" && data.topic !== topic) return; // filter by topic if specified
+        // 移除文件層級的分類過濾，因為「綜合練習」的文件裡面可能包含該分類的錯題
+        
         var details = data.details || [];
         details.forEach(function(d) {
+          // 在這裡針對每一題的真實分類進行過濾
+          if (topic !== "綜合練習" && d.topic !== topic) return;
           if (!d.isCorrect && d.questionId) {
             if (!wrongQuestionsMap[d.questionId]) {
               wrongQuestionsMap[d.questionId] = {
