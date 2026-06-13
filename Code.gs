@@ -194,7 +194,14 @@ function buildFirebaseBootstrapPayloadV18() {
   var students = readStudentRowsForFirebase(ss);
   var topics = readTopicCacheOrBuild(ss, qSheet, qSheet.getLastRow());
   var classMap = {};
-  students.forEach(function(s) { if (s.className) classMap[s.className] = true; });
+  var classMapData = {};
+  students.forEach(function(s) { 
+    if (s.className) {
+      classMap[s.className] = true; 
+      if (!classMapData[s.className]) classMapData[s.className] = [];
+      classMapData[s.className].push(s);
+    }
+  });
   var classList = Object.keys(classMap).sort(function(a, b) { return a.localeCompare(b, "zh-TW"); });
 
   var title = firstRow[0] ? firstRow[0].toString().trim() : "動態題庫測驗";
@@ -216,6 +223,7 @@ function buildFirebaseBootstrapPayloadV18() {
       questionBankVersion: questionBankVersion,
       updatedAtText: localNow()
     },
+    classData: classMapData,
     questions: questions,
     students: students,
     counts: {
@@ -3281,4 +3289,20 @@ function handleGetDuplicateLoginReport(payload) {
   suspects.sort(function(a,b) { return b.replacedCount - a.replacedCount; });
 
   return jsonResponse({ status: "ok", suspects: suspects, total: suspects.length });
+}
+
+// ─────────────────────────────────────────────
+// Action：syncFirebaseToSheet（從 Firebase 將成績與登入記錄拉回 Google Sheet 備份）
+// ─────────────────────────────────────────────
+function syncFirebaseToSheet() {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (!projectId) return;
+  var token = firebaseAccessTokenFromServiceAccount();
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var scoreSheet = getOrCreateScoreSheet(ss); // 需要確保有此 sheet
+  var loginSheet = getOrCreateLoginLogSheet(ss);
+  
+  // TODO: 完整的 REST API query 實作，可以之後再寫，因為現在首要任務是「不動到 Google Sheet」與前端 Firebase 化
 }

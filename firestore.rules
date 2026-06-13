@@ -41,7 +41,25 @@ service cloud.firestore {
 
     match /answerBatches/{docId} {
       allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && resource.data.email == request.auth.token.email;
+      allow update, delete: if false;
+    }
+
+    match /loginLogs/{docId} {
+      allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
       allow read, update, delete: if false;
+    }
+
+    match /questionStats/{questionId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+
+    match /studentStats/{studentId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
     }
   }
 }

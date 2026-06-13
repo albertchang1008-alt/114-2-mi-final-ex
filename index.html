@@ -85,34 +85,6 @@
         </div>
     </section>
 
-    <!-- 班級完成度排行（登入框上方，無需登入即可看到） -->
-    <section id="ranking-section" class="mobile-card p-6 md:p-8 mb-4">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-bold text-gray-800">🏅 班級完成度排行</h2>
-            <div class="flex items-center gap-2">
-                <span id="ranking-pass-badge" class="text-xs bg-sky-100 text-sky-700 px-3 py-1 rounded-full font-semibold border border-sky-200"></span>
-                <span class="text-xs text-gray-400">每小時更新</span>
-            </div>
-        </div>
-        <!-- ★ 骨架佔位（載入中）-->
-        <div id="ranking-skeleton" class="space-y-3">
-            <div class="animate-pulse">
-                <div class="h-14 bg-gray-100 rounded-xl mb-3"></div>
-                <div class="h-14 bg-gray-100 rounded-xl mb-3"></div>
-                <div class="h-14 bg-gray-100 rounded-xl"></div>
-            </div>
-        </div>
-        <div id="ranking-list" class="space-y-3 hidden"></div>
-        <!-- 個人完成度（點班級後展開） -->
-        <div id="ranking-student-view" class="hidden mt-4 border-t pt-4">
-            <div class="flex items-start gap-2 mb-3">
-                <button onclick="closeRankingStudentView()" class="text-gray-400 hover:text-gray-600 text-sm shrink-0 pt-0.5">← 返回</button>
-                <h3 id="ranking-class-title" class="font-bold text-gray-800 leading-snug min-w-0"></h3>
-            </div>
-            <div id="ranking-student-list"></div>
-        </div>
-    </section>
-
     <section id="login-section" class="hidden mobile-card p-6 md:p-10 mx-auto max-w-md">
         <h2 class="text-xl font-black mb-2 text-center text-gray-800">學生登入</h2>
         <p class="text-sm text-center mb-6" style="color:var(--warm-muted);">請使用學校 Google 帳號登入</p>
@@ -803,21 +775,6 @@ function initDeadline(deadlineStr) {
     initCampusDeadlines({ xindian: deadlineStr, yilan: "" });
 }
 
-// ★ v1.3 更新成績總表
-async function updateScoreTable() {
-    const btn = document.getElementById("score-table-btn");
-    const origText = btn.innerHTML;
-    btn.innerHTML = "⏳ 更新中...";
-    btn.disabled = true;
-    try {
-        const res = await postGAS({ action: "getStudentScoreTable" });
-        btn.innerHTML = "✅ " + (res.message || "更新完成");
-        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
-    } catch(e) {
-        btn.innerHTML = "❌ 失敗";
-        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
-    }
-}
 
 // ── 系統狀態 ──
 let allQuestionsData   = [];
@@ -923,27 +880,6 @@ async function fetchQuestionBank() {
         show("login-section");
         initGoogleSignIn();
 
-        // ★ #1 修正：排行從 doGet 直接取，零延遲
-        if (shouldShowLoginRanking() && result.rankingCache) {
-            rankingData = {
-                status: "ok",
-                passScore:        result.rankingCache.passScore,
-                completionTopics: result.rankingCache.completionTopics,
-                ranking:          result.rankingCache.ranking || [],
-                todayTotal:       null,   // doGet 快取不含今日資料，由 getCompletionRanking 補
-                todayByClass:     {}
-            };
-            hide("ranking-skeleton");
-            show("ranking-list");
-            renderRankingSection(rankingData);
-            // 背景補齊今日練習人數
-            loadCompletionRanking(true);
-        } else if (shouldShowLoginRanking()) {
-            // 快取不存在時回退到獨立呼叫
-            loadCompletionRanking(false);
-        } else {
-            hide("ranking-section");
-        }
     } catch (err) {
         document.getElementById("error-message").textContent = "連線失敗：" + err.message;
         hide("loading-section"); show("error-section");
@@ -1229,7 +1165,7 @@ async function completeLogin(idVal, nameVal, emailVal, classVal) {
         if (!document.getElementById("kicked-section").classList.contains("hidden")) return;
         throw new Error("登入驗證失敗，請重新嘗試");
     }
-    postGAS({ action: "recordLogin", studentId, name: studentName, email: studentEmail }).catch(() => {});
+    window.FirebaseV18.recordLogin(studentId, studentName, studentEmail).catch(() => {});
     isLoggedIn = true;
     clearLoginBusy();
     document.getElementById("display-user-name").textContent = studentName;
@@ -2057,18 +1993,32 @@ let rankingData = null; // 快取排行資料
 // ── 個人完成度 ────────────────────────────────
 async function loadMyCompletion() {
     try {
-        const res = await postGAS({ action: "getMyCompletion", studentId });
+        const res = await window.FirebaseV18.getMyCompletion();
         if (res.status !== "ok") {
             const summary = document.getElementById("my-completion-summary");
             if (summary) summary.classList.add("hidden");
             return;
         }
-        if (!res.completionTopics?.length) {
+        
+        // Transform topicBest into the format expected by renderMyCompletion
+        const passScore = completionSettings.passScore || 60;
+        const completionTopics = completionSettings.completionTopics || [];
+        if (!completionTopics.length) {
             const summary = document.getElementById("my-completion-summary");
             if (summary) summary.classList.add("hidden");
             return;
         }
-        renderMyCompletion(res);
+        
+        const details = completionTopics.map(t => {
+            const best = res.topicBest[t] || null;
+            return {
+                topic: t,
+                best: best,
+                passed: best !== null && best >= passScore
+            };
+        });
+        
+        renderMyCompletion({ passScore, completionTopics, details });
     } catch(e) {
         console.warn("個人完成度載入失敗", e);
         const summary = document.getElementById("my-completion-summary");
@@ -2109,117 +2059,6 @@ function renderMyCompletion(data) {
     try { renderTopics(); } catch(e) { console.error("❌ renderMyCompletion → renderTopics 失敗：", e); }
 }
 
-async function loadCompletionRanking(todayOnly = false) {
-    if (!shouldShowLoginRanking()) {
-        hide("ranking-section");
-        return;
-    }
-    try {
-        const res = await postGAS({ action: "getCompletionRanking" });
-        if (res.status !== "ok") return;
-        rankingData = res;
-        if (todayOnly) {
-            renderRankingSection(res);
-            return;
-        }
-        if (isLoggedIn) return;
-        hide("ranking-skeleton");
-        show("ranking-list");
-        renderRankingSection(res);
-    } catch(e) {
-        console.warn("排行載入失敗", e);
-        hide("ranking-skeleton");
-        const list = document.getElementById("ranking-list");
-        if (list && !rankingData) {
-            list.innerHTML = '<p class="text-gray-300 text-center text-sm py-2">排行資料暫時無法載入</p>';
-            show("ranking-list");
-        }
-    }
-}
-
-function renderRankingSection(data) {
-    const { passScore, completionTopics, todayTotal, todayByClass } = data;
-    const cfg = getLoginPageSettings();
-    let ranking = data.ranking || [];
-    if (cfg.rankingClassFilter.length) {
-        const classSet = new Set(cfg.rankingClassFilter);
-        ranking = ranking.filter(cls => classSet.has(cls.class));
-    }
-    if (cfg.rankingLimit > 0) ranking = ranking.slice(0, cfg.rankingLimit);
-    const totalStudents = ranking.reduce((s, r) => s + r.studentCount, 0);
-    const visibleTodayTotal = ranking.reduce((s, cls) => s + ((todayByClass && todayByClass[cls.class]) || 0), 0);
-
-    const passBadge = document.getElementById("ranking-pass-badge");
-    if (passBadge) {
-        passBadge.textContent = `達標：${passScore} 分`;
-        passBadge.classList.toggle("hidden", !cfg.showPassScore);
-    }
-    document.getElementById("ranking-list").innerHTML = "";
-    document.getElementById("ranking-student-view").classList.add("hidden");
-
-    if (!ranking.length) {
-        document.getElementById("ranking-list").innerHTML =
-            '<p class="text-gray-400 text-center py-4 text-sm">尚無作答資料</p>';
-        return;
-    }
-
-    const medals = ["🥇","🥈","🥉"];
-    const colors  = ["#6366f1","#0ea5e9","#f59e0b","#10b981","#f43f5e"];
-
-    // ── 欄位說明列 ──
-    const headerRow = `<div style="display:flex;align-items:center;gap:8px;padding:0 0 4px 32px;">
-        <span style="flex:1;"></span>
-        <span style="font-size:10px;color:#94a3b8;min-width:52px;text-align:center;">完成度</span>
-        <div style="flex:2;margin:0 8px;"></div>
-        ${cfg.showTodayCount ? '<span style="font-size:10px;color:#94a3b8;min-width:52px;text-align:right;">今日練習</span>' : ""}
-    </div>`;
-
-    // ── 各班列 ──
-    const rows = ranking.map((cls, idx) => {
-        const pct     = cls.pct ?? 0;
-        const color   = colors[idx % colors.length];
-        const medal   = medals[idx] || `${idx+1}.`;
-        const todayCnt = (todayByClass && todayByClass[cls.class]) || 0;
-        const todayPct = cls.studentCount > 0 ? Math.round(todayCnt / cls.studentCount * 100) : 0;
-        return `<div class="student-row border border-gray-100 rounded-xl px-3 py-2.5 flex items-center gap-2 mb-2"
-                     onclick="openRankingClassView('${cls.class}')">
-            <span class="text-lg shrink-0 w-7 text-center">${medal}</span>
-            <span class="font-bold text-gray-800 text-sm min-w-0" style="flex:1;">${cls.class}</span>
-            <span class="text-xs font-bold min-w-[52px] text-center" style="color:${color};">
-                ${cls.avgCompleted}/${completionTopics.length}
-            </span>
-            <div style="flex:2;margin:0 6px;">
-                <div class="rate-bar" style="height:6px;">
-                    <div class="rate-bar-fill" style="width:${pct}%;background:linear-gradient(90deg,${color},${color}88);"></div>
-                </div>
-            </div>
-            ${cfg.showTodayCount ? `<span class="text-xs font-bold min-w-[52px] text-right">
-                <span class="today-cnt" style="color:#10b981;">${todayCnt}</span><span class="text-gray-400">/${cls.studentCount}人</span>
-            </span>` : ""}
-            <svg class="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
-        </div>`;
-    }).join("");
-
-    // ── 總計 ──
-    const totalRow = cfg.showTodayCount ? `<div style="padding-top:10px;border-top:1.5px dashed #e2e8f0;margin-top:2px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-            <div style="display:flex;align-items:center;gap:5px;">
-                <span style="font-size:14px;">📅</span>
-                <span style="font-size:12px;color:#64748b;">今天共</span>
-                <span class="today-total" style="font-size:20px;font-weight:900;color:#10b981;line-height:1;">${visibleTodayTotal}</span>
-                <span style="font-size:12px;color:#64748b;">人練習過</span>
-            </div>
-            <span style="font-size:11px;color:#94a3b8;background:#f8fafc;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;">共 ${totalStudents} 人</span>
-        </div>
-        <div class="rate-bar" style="height:5px;">
-            <div class="rate-bar-fill" style="width:${totalStudents>0?Math.round(visibleTodayTotal/totalStudents*100):0}%;background:linear-gradient(90deg,#10b981,#34d399);"></div>
-        </div>
-    </div>` : "";
-
-    document.getElementById("ranking-list").innerHTML = headerRow + rows + totalRow;
-}
 
 
 // ★ 共用：熱圖表格（桌機）
@@ -2385,57 +2224,6 @@ function renderResponsiveView(students, topics, passScore, onCellClick, onNameCl
     }
 }
 
-async function openRankingClassView(className) {
-    if (!rankingData) return;
-    let cls = rankingData.ranking.find(r => r.class === className);
-    if (!cls) return;
-
-    if (!cls.students) {
-        try {
-            const res = await postGAS({ action: "getClassStudents", className });
-            if (res.status === "ok" && res.students) {
-                cls = Object.assign({}, cls, { students: res.students });
-            } else return;
-        } catch(e) { return; }
-    }
-
-    document.getElementById("ranking-list").classList.add("hidden");
-    const view = document.getElementById("ranking-student-view");
-    view.classList.remove("hidden");
-    document.getElementById("ranking-class-title").textContent = `${className} — 各學生完成狀況`;
-    // ★ 展開 app 容器寬度，讓熱圖有更多空間
-    const appEl = document.getElementById("app");
-    appEl.dataset.origClass = appEl.className;
-    if (window.innerWidth >= 768) {
-        appEl.className = appEl.className.replace("max-w-3xl", "max-w-7xl");
-    }
-
-    const passScore = rankingData.passScore;
-    // ★ 分類順序依題庫順序（topicsData），篩選出完成度設定中的分類
-    const compTopicSet = new Set(rankingData.completionTopics || []);
-    const topics = topicsData.map(t => t.name).filter(n => compTopicSet.has(n));
-
-    // 整理學生資料格式
-    const students = (cls.students || []).map(stu => {
-        const topicMap = {};
-        (stu.details || []).forEach(d => { topicMap[d.topic] = d.best; });
-        return { sid: stu.sid, name: maskName(stu.name), topicMap, wrongCnt: 0 };
-    });
-
-    document.getElementById("ranking-student-list").innerHTML =
-        renderResponsiveView(students, topics, passScore, null, null);
-}
-
-function closeRankingStudentView() {
-    document.getElementById("ranking-student-view").classList.add("hidden");
-    document.getElementById("ranking-list").classList.remove("hidden");
-    // ★ 還原 app 容器寬度
-    const appEl = document.getElementById("app");
-    if (appEl.dataset.origClass) {
-        appEl.className = appEl.dataset.origClass;
-        delete appEl.dataset.origClass;
-    }
-}
 
 function backToTopics() {
     hide("result-section");
@@ -2506,7 +2294,7 @@ async function loadWrongFcCount() {
     try {
         // 逐一查詢各分類錯題後合併
         const results = await Promise.all(
-            topics.map(topic => postGAS({ action: "getMyWrongQuestions", studentId, topic, hours }))
+            topics.map(topic => window.FirebaseV18.getMyWrongQuestions(studentId, topic, hours))
         );
         // 合併去重（以 id 為 key）
         const qMap = new Map();

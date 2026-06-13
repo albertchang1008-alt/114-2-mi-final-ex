@@ -306,6 +306,35 @@
 
     // 已將所有資料整併，無需再針對 answerDetails, studentProgress, wrongQuestions 進行迴圈寫入，大幅降低寫入次數。
 
+    // 1. Update Student Stats (Firebase increment)
+    var studentStatsRef = db.collection(c.studentStats || "studentStats").doc(safeDocId(payload.studentId || email));
+    batch.set(studentStatsRef, {
+      studentId: payload.studentId || "",
+      name: payload.name || "",
+      className: payload.className || "",
+      email: email,
+      lastActive: now,
+      totalAttempts: firebase.firestore.FieldValue.increment(1),
+      totalDuration: firebase.firestore.FieldValue.increment(duration)
+    }, { merge: true });
+
+    // 2. Update Question Stats (Firebase increment)
+    cleanDetails.forEach(function(d) {
+      if (!d.questionId) return;
+      var qStatsRef = db.collection(c.questionStats || "questionStats").doc(safeDocId(d.questionId));
+      var updateData = {
+        questionId: d.questionId,
+        topic: d.topic || "",
+        totalAttempts: firebase.firestore.FieldValue.increment(1),
+      };
+      if (d.isCorrect) {
+        updateData.correctCount = firebase.firestore.FieldValue.increment(1);
+      } else {
+        updateData.wrongCount = firebase.firestore.FieldValue.increment(1);
+      }
+      batch.set(qStatsRef, updateData, { merge: true });
+    });
+
     await batch.commit();
     return { status: "ok", batchId: batchId, writtenDetails: details.length };
   }
@@ -391,6 +420,107 @@
     }
   }
 
+  async function getMyWrongQuestions(studentId, topic, hours) {
+    if (!init()) return { status: "error", message: "Firebase 尚未啟用" };
+    if (!auth.currentUser) return { status: "error", message: "尚未登入" };
+    try {
+      var c = cfg.collections || {};
+      var email = currentUserEmail();
+      var cutoff = (hours && hours > 0) ? new Date(Date.now() - hours * 60 * 60 * 1000).toISOString() : "1970-01-01T00:00:00Z";
+      
+      var query = db.collection(c.answerBatches || "answerBatches")
+        .where("email", "==", email)
+        .where("createdAt", ">=", cutoff) // Firestore string comparison works for ISO dates!
+        .orderBy("createdAt", "desc");
+        
+      var snap = await query.get();
+      var wrongQuestionsMap = {};
+      
+      snap.forEach(function(doc) {
+        var data = doc.data();
+        if (topic !== "綜合練習" && data.topic !== topic) return; // filter by topic if specified
+        var details = data.details || [];
+        details.forEach(function(d) {
+          if (!d.isCorrect && d.questionId) {
+            if (!wrongQuestionsMap[d.questionId]) {
+              wrongQuestionsMap[d.questionId] = {
+                id: d.questionId,
+                q: d.questionText,
+                top: d.topic,
+                type: d.questionType,
+                cog: d.cogType,
+                wrongSelectedText: d.selectedText,
+                correctText: d.correctText,
+                time: data.createdAt
+              };
+            }
+          }
+        });
+      });
+      return { status: "ok", questions: Object.values(wrongQuestionsMap) };
+    } catch (err) {
+      console.warn("getMyWrongQuestions error:", err);
+      return { status: "error", message: String(err) };
+    }
+  }
+
+  async function getMyCompletion() {
+    if (!init()) return { status: "error", message: "Firebase 尚未啟用" };
+    if (!auth.currentUser) return { status: "error", message: "尚未登入" };
+    try {
+      var c = cfg.collections || {};
+      var email = currentUserEmail();
+      var query = db.collection(c.answerBatches || "answerBatches")
+        .where("email", "==", email)
+        .orderBy("createdAt", "desc");
+        
+      var snap = await query.get();
+      var topicBest = {};
+      
+      snap.forEach(function(doc) {
+        var data = doc.data();
+        if (data.mode === "錯題重做") return;
+        var t = data.topic;
+        var s = Number(data.score || 0);
+        if (t && (!topicBest[t] || s > topicBest[t])) {
+          topicBest[t] = s;
+        }
+      });
+      
+      // Need completionSettings from system settings
+      // Fortunately we have it in window.completionSettings in index.html,
+      // but let's just return the topicBest map and let index.html format it.
+      return { status: "ok", topicBest: topicBest };
+    } catch (err) {
+      console.warn("getMyCompletion error:", err);
+      return { status: "error", message: String(err) };
+    }
+  }
+
+  async function recordLogin(studentId, name, email) {
+    if (!init()) return;
+    try {
+      var c = cfg.collections || {};
+      await db.collection(c.loginLogs || "loginLogs").add({
+        studentId: studentId,
+        name: name,
+        email: String(email).toLowerCase().trim(),
+        loginAt: serverTimestamp()
+      });
+      
+      // Also update studentStats
+      var studentStatsRef = db.collection(c.studentStats || "studentStats").doc(safeDocId(studentId || email));
+      await studentStatsRef.set({
+        studentId: studentId,
+        name: name,
+        email: String(email).toLowerCase().trim(),
+        lastLogin: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("recordLogin error:", err);
+    }
+  }
+
   window.FirebaseV18 = {
     isEnabled: isEnabled,
     init: init,
@@ -403,6 +533,9 @@
     submitAttemptWithFallback: submitAttemptWithFallback,
     flushQueue: flushQueue,
     createSession: createSession,
-    verifySession: verifySession
+    verifySession: verifySession,
+    getMyWrongQuestions: getMyWrongQuestions,
+    getMyCompletion: getMyCompletion,
+    recordLogin: recordLogin
   };
 })();
