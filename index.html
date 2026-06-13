@@ -328,7 +328,7 @@
 
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v2.03 (效能優化與修復過濾 Bug) ／ 適配 GAS v10-715">v2.03</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v2.04 (測試除錯版) ／ 適配 GAS v10-715">v2.04</span>
     <a href="admin.html" class="text-gray-200 text-xs ml-2 hover:text-gray-400 transition" aria-label="教師後台">教師後台</a>
 </footer>
 
@@ -2296,13 +2296,19 @@ async function loadWrongFcCount() {
         const res = await window.FirebaseV18.getMyWrongQuestions(hours);
         const qMap = new Map();
         
+        let rawCount = 0;
         if (res.status === "ok") {
+            rawCount = (res.questions || []).length;
             (res.questions || []).forEach(q => {
-                // 檢查這題的分類是否有被勾選
-                if (topics.includes(q.top) || topics.includes("綜合練習")) {
+                // 將 q.top 轉成字串，避免 Firebase 中是不小心存成數字型別導致 includes 比對失敗
+                const qTopStr = String(q.top || "").trim();
+                if (topics.includes(qTopStr) || topics.includes("綜合練習") || topics.length === 0) {
                     if (!qMap.has(q.id)) qMap.set(q.id, q);
                 }
             });
+        } else {
+            console.warn("獲取錯題失敗：", res.message);
+            alert("獲取錯題失敗：" + res.message);
         }
         let allWrong = shuffle([...qMap.values()]);
 
@@ -2316,11 +2322,11 @@ async function loadWrongFcCount() {
         const label = val === "0" ? "全部時間" : getFcTimeLabel(val);
         if (wfcQuestions.length > 0) {
             const limitNote = maxCount > 0 && qMap.size > maxCount ? `（共 ${qMap.size} 題，已限制為 ${maxCount} 題）` : "";
-            countEl.textContent = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}`;
+            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 共找到 ${rawCount} 題）</span>`;
             countEl.className   = "text-rose-600 text-sm font-semibold";
             startBtn.disabled   = false;
         } else {
-            countEl.textContent = `${label}內無錯題 🎉`;
+            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 共找到 ${rawCount} 題）</span>`;
             countEl.className   = "text-green-600 text-sm font-semibold";
             startBtn.disabled   = true;
         }
