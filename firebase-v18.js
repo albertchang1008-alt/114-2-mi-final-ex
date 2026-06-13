@@ -443,6 +443,10 @@
           docMs = docTime.toDate().getTime();
         } else if (docTime) {
           docMs = new Date(docTime).getTime();
+        } else if (data.endedAtClient) {
+          docMs = new Date(data.endedAtClient).getTime();
+        } else if (data.startedAtClient) {
+          docMs = new Date(data.startedAtClient).getTime();
         }
         
         // 放寬時間比較：如果是 0 就代表沒限制，或者比較 docMs
@@ -467,7 +471,7 @@
           }
         });
       });
-      return { status: "ok", questions: Object.values(wrongQuestionsMap) };
+      return { status: "ok", questions: Object.values(wrongQuestionsMap), _debugDocs: snap.size };
     } catch (err) {
       console.warn("getMyWrongQuestions error:", err);
       return { status: "error", message: String(err) };

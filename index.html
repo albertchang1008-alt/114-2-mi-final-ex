@@ -328,7 +328,7 @@
 
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v2.04 (測試除錯版) ／ 適配 GAS v10-715">v2.04</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v2.05 (極限除錯版) ／ 適配 GAS v10-715">v2.05</span>
     <a href="admin.html" class="text-gray-200 text-xs ml-2 hover:text-gray-400 transition" aria-label="教師後台">教師後台</a>
 </footer>
 
@@ -2320,13 +2320,14 @@ async function loadWrongFcCount() {
         wfcQuestions = allWrong;
 
         const label = val === "0" ? "全部時間" : getFcTimeLabel(val);
+        const docsScanned = res._debugDocs || 0;
         if (wfcQuestions.length > 0) {
             const limitNote = maxCount > 0 && qMap.size > maxCount ? `（共 ${qMap.size} 題，已限制為 ${maxCount} 題）` : "";
-            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 共找到 ${rawCount} 題）</span>`;
+            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>`;
             countEl.className   = "text-rose-600 text-sm font-semibold";
             startBtn.disabled   = false;
         } else {
-            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 共找到 ${rawCount} 題）</span>`;
+            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>`;
             countEl.className   = "text-green-600 text-sm font-semibold";
             startBtn.disabled   = true;
         }
