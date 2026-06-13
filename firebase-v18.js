@@ -420,7 +420,7 @@
     }
   }
 
-  async function getMyWrongQuestions(studentId, topic, hours) {
+  async function getMyWrongQuestions(hours) {
     if (!init()) return { status: "error", message: "Firebase 尚未啟用" };
     if (!auth.currentUser) return { status: "error", message: "尚未登入" };
     try {
@@ -428,7 +428,6 @@
       var email = currentUserEmail();
       var cutoff = (hours && hours > 0) ? new Date(Date.now() - hours * 60 * 60 * 1000) : new Date(0);
       
-      // 不使用複合查詢，避免需要建立 Firestore Index
       var query = db.collection(c.answerBatches || "answerBatches")
         .where("email", "==", email);
         
@@ -438,8 +437,6 @@
       snap.forEach(function(doc) {
         var data = doc.data();
         
-        // 在記憶體中過濾時間，避免 Firestore 複合索引問題
-        // createdAt 可能是 Timestamp 或是字串，保險起見轉成毫秒數比較
         var docTime = data.createdAt;
         var docMs = 0;
         if (docTime && typeof docTime.toDate === 'function') {
@@ -448,13 +445,12 @@
           docMs = new Date(docTime).getTime();
         }
         
-        if (docMs < cutoff.getTime()) return;
-        // 移除文件層級的分類過濾，因為「綜合練習」的文件裡面可能包含該分類的錯題
+        // 放寬時間比較：如果是 0 就代表沒限制，或者比較 docMs
+        if (hours && hours > 0 && docMs < cutoff.getTime()) return;
         
         var details = data.details || [];
         details.forEach(function(d) {
-          // 在這裡針對每一題的真實分類進行過濾
-          if (topic !== "綜合練習" && d.topic !== topic) return;
+          // ★ 回傳全部錯題，交給前端處理
           if (!d.isCorrect && d.questionId) {
             if (!wrongQuestionsMap[d.questionId]) {
               wrongQuestionsMap[d.questionId] = {
