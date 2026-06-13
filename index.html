@@ -654,7 +654,7 @@ function cleanPrefix(value) {
         .trim();
 }
 
-function findCorrectOptionIndex(options, correctText) {
+function findCorrectOptionIndex(options, correctText, originalOptions) {
     const cleanCorrect = normalizeAnswerText(correctText);
     if (!cleanCorrect) return -1;
     
@@ -662,13 +662,24 @@ function findCorrectOptionIndex(options, correctText) {
     let idx = (options || []).findIndex(opt => normalizeAnswerText(opt) === cleanCorrect);
     if (idx !== -1) return idx;
     
-    // 2. 如果正確答案是單一字母 A-D 或 1-4，直接對應到索引
-    if (cleanCorrect.length === 1) {
+    // 2. 如果正確答案是單一字母 A-D 或 1-4，直接對應到索引 (需搭配原始選項)
+    if (cleanCorrect.length === 1 && originalOptions && originalOptions.length > 0) {
         const up = cleanCorrect.toUpperCase();
         const letterIdx = ["A", "B", "C", "D"].indexOf(up);
-        if (letterIdx !== -1 && letterIdx < options.length) return letterIdx;
-        const numIdx = ["1", "2", "3", "4"].indexOf(cleanCorrect);
-        if (numIdx !== -1 && numIdx < options.length) return numIdx;
+        let targetText = null;
+        if (letterIdx !== -1 && letterIdx < originalOptions.length) {
+            targetText = originalOptions[letterIdx];
+        } else {
+            const numIdx = ["1", "2", "3", "4"].indexOf(cleanCorrect);
+            if (numIdx !== -1 && numIdx < originalOptions.length) {
+                targetText = originalOptions[numIdx];
+            }
+        }
+        if (targetText !== null) {
+            const targetClean = normalizeAnswerText(targetText);
+            const foundIdx = (options || []).findIndex(opt => normalizeAnswerText(opt) === targetClean);
+            if (foundIdx !== -1) return foundIdx;
+        }
     }
     
     // 3. 去除前綴後的語意比對
@@ -677,8 +688,8 @@ function findCorrectOptionIndex(options, correctText) {
     return idx;
 }
 
-function buildAnswerIntegrity(options, correctText) {
-    const correctIndex = findCorrectOptionIndex(options, correctText);
+function buildAnswerIntegrity(options, correctText, originalOptions) {
+    const correctIndex = findCorrectOptionIndex(options, correctText, originalOptions);
     return {
         correctIndex,
         ok: !!correctText && correctIndex !== -1,
@@ -837,21 +848,35 @@ document.addEventListener("visibilitychange", () => {
 // ══════════════════════════════════════════════
 //  1. 載入題庫
 // ══════════════════════════════════════════════
+function timeoutPromise(promise, ms, errorMsg) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(errorMsg || "連線逾時"));
+        }, ms);
+        promise.then(
+            (res) => { clearTimeout(timer); resolve(res); },
+            (err) => { clearTimeout(timer); reject(err); }
+        );
+    });
+}
+
 async function fetchQuestionBank() {
     show("loading-section"); hide("error-section");
     try {
         let result = null;
         if (window.FirebaseV18?.isEnabled?.()) {
             try {
-                result = await window.FirebaseV18.loadBootstrap();
+                result = await timeoutPromise(window.FirebaseV18.loadBootstrap(), 6000, "Firebase 連線逾時");
             } catch (fbErr) {
-                console.warn("[v1.81] Firebase 載入失敗，僅保留 GAS 載入入口資料：", fbErr);
+                console.warn("[v1.82] Firebase 載入失敗，嘗試使用 GAS 載入：", fbErr);
             }
         }
         if (!result) {
-            const res = await fetch(GAS_URL);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            result = await res.json();
+            const fetchPromise = fetch(GAS_URL).then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            });
+            result = await timeoutPromise(fetchPromise, 8000, "雲端題庫伺服器回應逾時，請稍後重試");
         }
         if (result.status !== "success" || !result.topics?.length)
             throw new Error("題庫回傳格式不正確，或題庫為空");
@@ -1116,18 +1141,18 @@ async function handleFirebaseLogin(forceSwitch) {
         const email = (user.email || "").toLowerCase().trim();
         if (!email) throw new Error("無法取得 Google Email");
         setLoginBusy("帳號驗證中，請稍候...");
-        let res = await window.FirebaseV18.findStudentByEmail(email);
-        if (!res || res.exists === false) {
-            res = await postGAS({ action: "getStudentProfile", email });
-        }
-        if (res.status && res.status !== "ok") throw new Error(res.message || "帳號驗證失敗");
-        if (res.exists || res.studentId) {
-            setLoginBusy("正在建立登入狀態...");
-            await completeLogin(res.studentId, res.name, email, res.className || res.class || "");
-        } else {
+        const res = await window.FirebaseV18.findStudentByEmail(email);
+        if (!res || !res.exists) {
             throw new Error(res.message || "查無學生資料，請確認此 Email 是否已在學生名單");
         }
-    } catch(e) {
+        // 建立 Firestore session
+        const device = getDeviceInfo();
+        const browser = navigator.userAgent;
+        const sessId = await window.FirebaseV18.createSession(res.studentId, device, browser);
+        sessionToken = sessId || "";
+        setLoginBusy("正在建立登入狀態...");
+        await completeLogin(res.studentId, res.name, email, res.className || res.class || "");
+    } catch (e) {
         clearLoginBusy();
         showErr(errEl, "Google 登入失敗：" + e.message);
     }
@@ -1424,6 +1449,7 @@ function prepareQuiz(sources) {
         id:             src.id,
         top:            src.top,
         q:              src.q,
+        options:        src.options,
         shuffledOpts:   shuffle([...src.options]),
         isImage:        src.isImage || false,
         imgUrl:         src.imgUrl  || "",
@@ -1538,7 +1564,7 @@ function judgeQuizSessionLocally() {
     quizSession.forEach(q => {
         const selectedText = q.userSelectedText || (q.shuffledOpts[q.userSelectedIndex] ?? "未作答");
         const correctText = q.ans || "";
-        const integrity = buildAnswerIntegrity(q.shuffledOpts, correctText);
+        const integrity = buildAnswerIntegrity(q.shuffledOpts, correctText, q.options);
         const isCorrect = integrity.ok && q.userSelectedIndex === integrity.correctIndex;
         q.userSelectedText = selectedText;
         q.isCorrectlyAnswered = isCorrect;
@@ -1679,7 +1705,7 @@ function renderReviewList() {
     quizSession.forEach((q, idx) => {
         const isOk = q.isCorrectlyAnswered;
         let optsHtml = '<div class="space-y-2 mb-4 pl-1">';
-        const correctIdx = q.serverCorrectIndex ?? findCorrectOptionIndex(q.shuffledOpts, q.serverCorrectText);
+        const correctIdx = q.serverCorrectIndex ?? findCorrectOptionIndex(q.shuffledOpts, q.serverCorrectText, q.options);
         const selectedText = q.userSelectedText || q.shuffledOpts[q.userSelectedIndex] || "";
         q.shuffledOpts.forEach((optText, optIdx) => {
             const isCorrectOpt = optIdx === correctIdx;
@@ -1703,7 +1729,7 @@ function renderReviewList() {
             optsHtml += `<div class="${textCls} flex items-start"><div class="shrink-0">${prefix}</div><div>${optText}${suffix}</div></div>`;
         });
         optsHtml += "</div>";
-        const integrity = q.answerIntegrity || buildAnswerIntegrity(q.shuffledOpts, q.serverCorrectText);
+        const integrity = q.answerIntegrity || buildAnswerIntegrity(q.shuffledOpts, q.serverCorrectText, q.options);
         const integrityHtml = integrity.ok ? "" : `
             <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 mb-3 text-sm font-semibold">
                 ⚠ ${escapeHTML(integrity.message)}
@@ -1819,7 +1845,7 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
     // 鎖定所有選項
     document.querySelectorAll(".fc-opt-btn").forEach(b => { b.onclick = null; });
 
-    const integrity = buildAnswerIntegrity(q.shuffledOpts, q.ans || "");
+    const integrity = buildAnswerIntegrity(q.shuffledOpts, q.ans || "", q.options);
     const correctIndex = integrity.correctIndex;
     const selectedIdx = (q.shuffledOpts || []).indexOf(selectedOpt);
     const isCorrect = integrity.ok && selectedIdx === correctIndex;

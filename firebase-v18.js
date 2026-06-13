@@ -1,3 +1,4 @@
+// firebase-v18.js — v1.83 (Firestore Session 取代 GAS token)
 (function () {
   "use strict";
 
@@ -347,8 +348,46 @@
       var queue = readQueue();
       queue.push({ payload: payload, queuedAt: new Date().toISOString(), error: err.message || String(err) });
       writeQueue(queue.slice(-20));
-      console.warn("[Firebase v1.81] 作答暫存於本機，稍後重送：", err);
+      console.warn("[Firebase v1.83] 作答暫存於本機，稍後重送：", err);
       return { status: "queued", message: "已暫存在本機，稍後會自動重送" };
+    }
+  }
+
+  // ── Firestore Session（取代 GAS loginStudent / verifySession）────────
+  function generateSessionId() {
+    try { return crypto.randomUUID(); } catch (_) {}
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  async function createSession(studentId, device, browser) {
+    if (!init()) return null;
+    var c = cfg.collections || {};
+    var sessionId = generateSessionId();
+    var ref = db.collection(c.sessions || "sessions").doc(safeDocId(studentId));
+    await ref.set({
+      sessionId: sessionId,
+      studentId: String(studentId || ""),
+      loginAt: serverTimestamp(),
+      device: device || "",
+      browser: browser || ""
+    });
+    return sessionId;
+  }
+
+  async function verifySession(studentId, sessionId) {
+    if (!init()) return { valid: true };
+    if (!studentId || !sessionId) return { valid: true };
+    try {
+      var c = cfg.collections || {};
+      var ref = db.collection(c.sessions || "sessions").doc(safeDocId(studentId));
+      var snap = await ref.get();
+      if (!snap.exists) return { valid: false, status: "kicked" };
+      var data = snap.data();
+      if (data.sessionId !== sessionId) return { valid: false, status: "kicked" };
+      return { valid: true };
+    } catch (err) {
+      console.warn("[Firebase v1.83] verifySession 失敗（fail open）：", err);
+      return { valid: true }; // fail open：Firebase 不通時不踢人
     }
   }
 
@@ -362,6 +401,8 @@
     getQuizByCount: getQuizByCount,
     submitAttempt: submitAttempt,
     submitAttemptWithFallback: submitAttemptWithFallback,
-    flushQueue: flushQueue
+    flushQueue: flushQueue,
+    createSession: createSession,
+    verifySession: verifySession
   };
 })();

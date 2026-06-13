@@ -25,6 +25,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Firestore Session：取代 GAS loginStudent / verifySession
+    // 每位學生只能寫自己的 session doc（doc ID = studentId）
+    // 讀取：前端需要讀來比對 sessionId → 允許已登入者讀
+    match /sessions/{studentId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+
     match /answerDetails/{docId} {
       allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
       allow read, update, delete: if false;
