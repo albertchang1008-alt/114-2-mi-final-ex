@@ -12,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
     <script src="firebase-v18.js"></script>
+    <script src="admin-firebase.js"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -546,6 +547,10 @@
                 <button onclick="updateScoreTable()" id="score-table-btn"
                     class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
                     📊 更新成績總表
+                </button>
+                <button onclick="AdminFirebase.syncFirebaseToSheet().then(res => alert(res.message)).catch(e => alert('備份失敗：' + e.message))" id="backup-sheet-btn"
+                    class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
+                    💾 同步備份至 Sheet
                 </button>
                 <button onclick="closeTeacherPortal()"
                     class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
@@ -3025,7 +3030,7 @@ async function loadTeacherData() {
     detailStatsLoaded  = false;
     detailStatsLoading = false;
     try {
-        const res = await postGAS({ action: "getTeacherData" });
+        const res = await window.AdminFirebase.fetchTeacherData();
         if (res.status !== "ok") throw new Error(res.message || "讀取失敗");
         teacherData = res;
         // 初始化空值，避免前端存取到 undefined
@@ -4106,7 +4111,8 @@ async function loadDetailStats() {
     if (tList) tList.innerHTML = loadingHTML;
 
     try {
-        const res = await postGAS({ action: "getDetailStats" });
+        // 因為前端運算一次就全部算完了，不需要再透過網路呼叫
+        const res = teacherData;
         if (res.status !== "ok") throw new Error(res.message || "載入失敗");
 
         // 合併到 teacherData
