@@ -426,11 +426,11 @@
     try {
       var c = cfg.collections || {};
       var email = currentUserEmail();
-      var cutoff = (hours && hours > 0) ? new Date(Date.now() - hours * 60 * 60 * 1000).toISOString() : "1970-01-01T00:00:00Z";
+      var cutoff = (hours && hours > 0) ? new Date(Date.now() - hours * 60 * 60 * 1000) : new Date(0);
       
       var query = db.collection(c.answerBatches || "answerBatches")
         .where("email", "==", email)
-        .where("createdAt", ">=", cutoff) // Firestore string comparison works for ISO dates!
+        .where("createdAt", ">=", cutoff)
         .orderBy("createdAt", "desc");
         
       var snap = await query.get();
