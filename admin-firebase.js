@@ -11,9 +11,9 @@ window.AdminFirebase = (function() {
 
     function init() {
         if (isInitialized) return true;
-        if (!window.firebase || !window.firebaseConfigV18) return false;
+        if (!window.firebase || !window.FIREBASE_V18_CONFIG || !window.FIREBASE_V18_CONFIG.firebaseConfig) return false;
         if (!firebase.apps.length) {
-            firebase.initializeApp(window.firebaseConfigV18);
+            firebase.initializeApp(window.FIREBASE_V18_CONFIG.firebaseConfig);
         }
         db = firebase.firestore();
         auth = firebase.auth();
@@ -28,7 +28,7 @@ window.AdminFirebase = (function() {
     async function fetchTeacherData() {
         if (!init()) throw new Error('Firebase 尚未初始化');
 
-        const c = window.firebaseConfigV18.collections || {};
+        const c = window.FIREBASE_V18_CONFIG.collections || {};
         
         // 抓取所有 answerBatches
         const snap = await db.collection(c.answerBatches || 'answerBatches').get();
@@ -264,7 +264,7 @@ window.AdminFirebase = (function() {
 
     async function getDuplicateLoginReport() {
         if (!init()) throw new Error('Firebase 尚未初始化');
-        const c = window.firebaseConfigV18.collections || {};
+        const c = window.FIREBASE_V18_CONFIG.collections || {};
         
         const loginSnap = await db.collection(c.loginLogs || 'loginLogs').get();
         const logins = [];
