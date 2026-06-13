@@ -428,16 +428,27 @@
       var email = currentUserEmail();
       var cutoff = (hours && hours > 0) ? new Date(Date.now() - hours * 60 * 60 * 1000) : new Date(0);
       
+      // 不使用複合查詢，避免需要建立 Firestore Index
       var query = db.collection(c.answerBatches || "answerBatches")
-        .where("email", "==", email)
-        .where("createdAt", ">=", cutoff)
-        .orderBy("createdAt", "desc");
+        .where("email", "==", email);
         
       var snap = await query.get();
       var wrongQuestionsMap = {};
       
       snap.forEach(function(doc) {
         var data = doc.data();
+        
+        // 在記憶體中過濾時間，避免 Firestore 複合索引問題
+        // createdAt 可能是 Timestamp 或是字串，保險起見轉成毫秒數比較
+        var docTime = data.createdAt;
+        var docMs = 0;
+        if (docTime && typeof docTime.toDate === 'function') {
+          docMs = docTime.toDate().getTime();
+        } else if (docTime) {
+          docMs = new Date(docTime).getTime();
+        }
+        
+        if (docMs < cutoff.getTime()) return;
         if (topic !== "綜合練習" && data.topic !== topic) return; // filter by topic if specified
         var details = data.details || [];
         details.forEach(function(d) {
@@ -471,8 +482,7 @@
       var c = cfg.collections || {};
       var email = currentUserEmail();
       var query = db.collection(c.answerBatches || "answerBatches")
-        .where("email", "==", email)
-        .orderBy("createdAt", "desc");
+        .where("email", "==", email);
         
       var snap = await query.get();
       var topicBest = {};
