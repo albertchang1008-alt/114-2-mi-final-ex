@@ -45,8 +45,6 @@ window.AdminFirebase = (function() {
         const classStats = {};
         const topicTimeStats = {};
         
-        const dailyTrendMap = {};
-        
         const qMap = new Map();
         
         batches.forEach(b => {
@@ -70,22 +68,6 @@ window.AdminFirebase = (function() {
                 isRetry: (b.mode || '') === '錯題重做'
             };
             studentHistory[sid].attempts.push(attemptObj);
-            
-            // 每日趨勢圖資料收集
-            if (attemptObj.date) {
-                const d = new Date(attemptObj.date);
-                if (!isNaN(d)) {
-                    const dStr = `${d.getMonth()+1}/${d.getDate()}`;
-                    if (!dailyTrendMap[dStr]) {
-                        dailyTrendMap[dStr] = { date: dStr, fullDate: new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), attempts: 0, totalSec: 0, questionCount: 0 };
-                    }
-                    dailyTrendMap[dStr].attempts++;
-                    if (b.duration > 0 && b.questionCount > 0) {
-                        dailyTrendMap[dStr].totalSec += Number(b.duration);
-                        dailyTrendMap[dStr].questionCount += Number(b.questionCount);
-                    }
-                }
-            }
             
             if (!attemptObj.isRetry) {
                 if (!classStats[cls]) classStats[cls] = { correct: 0, total: 0, studentSet: new Set() };
@@ -287,14 +269,6 @@ window.AdminFirebase = (function() {
             };
         });
 
-        const trendStats = Object.values(dailyTrendMap)
-            .sort((a,b) => a.fullDate - b.fullDate)
-            .map(d => ({
-                date: d.date,
-                attempts: d.attempts,
-                avgSec: d.questionCount > 0 ? Math.round(d.totalSec / d.questionCount) : 0
-            }));
-
         return {
             status: 'ok',
             studentHistory,
@@ -302,8 +276,7 @@ window.AdminFirebase = (function() {
             topicStats,
             questionStats,
             cogTypeStats,
-            studentWrongDetails: studentWrongMap,
-            trendStats
+            studentWrongDetails: studentWrongMap
         };
     }
 

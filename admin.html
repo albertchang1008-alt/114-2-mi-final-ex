@@ -587,7 +587,7 @@
 
             <!-- ★ 新增：每日作答趨勢圖 -->
             <div id="trend-chart-container" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 class="text-lg font-bold text-gray-800 mb-4">📈 每日作答趨勢</h2>
+                <h2 id="trend-chart-title" class="text-lg font-bold text-gray-800 mb-4">📈 每日作答趨勢</h2>
                 <div class="relative w-full h-64">
                     <canvas id="trend-chart"></canvas>
                 </div>
@@ -3095,17 +3095,77 @@ function renderTeacherDashboard(data) {
     renderQuestionStats(qStats);
     renderTopicChart(tStats);
     
-    // ★ 渲染趨勢圖
-    if (data.trendStats && data.trendStats.length > 0) {
-        document.getElementById("trend-chart-container").classList.remove("hidden");
-        renderTrendChart(data.trendStats);
-    } else {
-        document.getElementById("trend-chart-container").classList.add("hidden");
-    }
+    // ★ 動態渲染連續小時制趨勢圖
+    renderDynamicTrendChart('ALL');
 }
 
 let trendChartInst = null;
-function renderTrendChart(trendData) {
+function renderDynamicTrendChart(className = 'ALL') {
+    const sHist = teacherData?.studentHistory || {};
+    
+    // 1. 蒐集指定班級的所有作答紀錄並精確到小時
+    const hourlyMap = {};
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    
+    Object.values(sHist).forEach(student => {
+        if (className !== 'ALL' && student.class !== className) return;
+        
+        student.attempts.forEach(a => {
+            if (!a.date) return;
+            const d = new Date(a.date);
+            if (isNaN(d)) return;
+            
+            // 將時間對齊至「小時」
+            const hourD = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours());
+            const ht = hourD.getTime();
+            
+            if (ht < minTime) minTime = ht;
+            if (ht > maxTime) maxTime = ht;
+            
+            if (!hourlyMap[ht]) {
+                hourlyMap[ht] = { attempts: 0, totalSec: 0, qCount: 0 };
+            }
+            hourlyMap[ht].attempts++;
+            const qCount = a.correct + a.wrong;
+            if (a.duration > 0 && qCount > 0) {
+                hourlyMap[ht].totalSec += a.duration;
+                hourlyMap[ht].qCount += qCount;
+            }
+        });
+    });
+
+    // 2. 建立連續的時間軸 (從 minTime 到 maxTime，每小時推進)
+    const trendData = [];
+    if (minTime !== Infinity && maxTime !== -Infinity) {
+        for (let time = minTime; time <= maxTime; time += 3600000) { // 3600000ms = 1小時
+            const d = new Date(time);
+            const dStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:00`;
+            const stats = hourlyMap[time] || { attempts: 0, totalSec: 0, qCount: 0 };
+            trendData.push({
+                date: dStr,
+                attempts: stats.attempts,
+                avgSec: stats.qCount > 0 ? Math.round(stats.totalSec / stats.qCount) : 0
+            });
+        }
+    }
+
+    // 3. 更新標題
+    const titleEl = document.getElementById("trend-chart-title");
+    if (titleEl) {
+        titleEl.textContent = `📈 作答趨勢 (${className === 'ALL' ? '全校' : className})`;
+    }
+
+    // 4. 繪製圖表
+    const container = document.getElementById("trend-chart-container");
+    if (!container) return;
+    
+    if (trendData.length === 0) {
+        container.classList.add("hidden");
+        return;
+    }
+    container.classList.remove("hidden");
+
     if (trendChartInst) trendChartInst.destroy();
     const ctx = document.getElementById("trend-chart");
     if (!ctx) return;
@@ -3269,6 +3329,9 @@ function openClassView(className) {
     const titleSuffix = activeTopic === "ALL" ? "全部單元" : activeTopic;
     document.getElementById("class-view-title").textContent = `${className} — ${titleSuffix}`;
 
+    // ★ 切換動態趨勢圖為該班級
+    renderDynamicTrendChart(className);
+
     // 取得該班所有學生
     const classStudents = Object.entries(sHist)
         .filter(([, info]) => info.class === className)
@@ -3316,6 +3379,9 @@ function filterClassStudents() {
 function closeClassView() {
     document.getElementById("class-student-view").classList.add("hidden");
     document.getElementById("class-list").classList.remove("hidden");
+    
+    // ★ 恢復全校趨勢圖
+    renderDynamicTrendChart('ALL');
 }
 
 // ★ 點入學生：傳入 sid + topic，只顯示該單元的歷程
