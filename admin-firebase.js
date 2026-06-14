@@ -143,6 +143,7 @@ window.AdminFirebase = (function() {
                 return {
                     studentId: sid,
                     name: hist.name,
+                    attempts: hist.attempts,
                     maxScore: hist.attempts.length ? Math.max(...hist.attempts.map(a=>a.score)) : 0,
                     completedTopics: completedCount,
                     totalAttempts: hist.attempts.length,
