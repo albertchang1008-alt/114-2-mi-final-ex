@@ -133,11 +133,33 @@ window.AdminFirebase = (function() {
                 };
             });
             
+            let totalAttempts = 0, totalCorrect = 0;
+            const topicBreakdownMap = {};
+            students.forEach(st => {
+               st.attempts.forEach(a => {
+                  if (!a.isRetry) {
+                      totalAttempts += (a.correct||0) + (a.wrong||0);
+                      totalCorrect += (a.correct||0);
+                      const t = a.topic || '未分類';
+                      if (!topicBreakdownMap[t]) topicBreakdownMap[t] = { topic: t, total: 0, correct: 0 };
+                      topicBreakdownMap[t].total += (a.correct||0) + (a.wrong||0);
+                      topicBreakdownMap[t].correct += (a.correct||0);
+                  }
+               });
+            });
+
             return {
-                classId: cls,
-                avgScore: students.length ? Math.round(students.reduce((s, st) => s + st.maxScore, 0) / students.length) : 0,
-                submitRate: students.length,
-                topicBreakdown: [],
+                class: cls,
+                studentCount: students.length,
+                total: totalAttempts,
+                correct: totalCorrect,
+                rate: totalAttempts > 0 ? Math.round((totalCorrect/totalAttempts)*100) : 0,
+                topicBreakdown: Object.values(topicBreakdownMap).map(tb => ({
+                    topic: tb.topic,
+                    total: tb.total,
+                    correct: tb.correct,
+                    rate: tb.total > 0 ? Math.round((tb.correct/tb.total)*100) : 0
+                })),
                 students: students.sort((a,b) => b.completedTopics - a.completedTopics || b.maxScore - a.maxScore)
             };
         });
@@ -159,7 +181,7 @@ window.AdminFirebase = (function() {
                     const cog = d.cogType || '未分類';
                     
                     if (!qStatsMap[qid]) {
-                        qStatsMap[qid] = { qid: qid, topic: top, cogType: cog, correct: 0, wrong: 0, totalSec: 0, countWithSec: 0, wrongOpts: {} };
+                        qStatsMap[qid] = { qid: qid, topic: top, cogType: cog, correct: 0, wrong: 0, totalSec: 0, countWithSec: 0, optionCounts: {}, text: d.questionText || '', correctText: d.correctText || '' };
                     }
                     if (!tStatsMap[top]) {
                         tStatsMap[top] = { topic: top, correct: 0, wrong: 0, totalSec: 0, countWithSec: 0 };
@@ -168,6 +190,11 @@ window.AdminFirebase = (function() {
                         cStatsMap[cog] = { cogType: cog, correct: 0, wrong: 0 };
                     }
                     
+                    const wOpt = (d.selectedText || '').trim();
+                    if (wOpt) {
+                        qStatsMap[qid].optionCounts[wOpt] = (qStatsMap[qid].optionCounts[wOpt] || 0) + 1;
+                    }
+
                     if (d.isCorrect) {
                         qStatsMap[qid].correct++;
                         tStatsMap[top].correct++;
@@ -176,10 +203,6 @@ window.AdminFirebase = (function() {
                         qStatsMap[qid].wrong++;
                         tStatsMap[top].wrong++;
                         cStatsMap[cog].wrong++;
-                        const wOpt = (d.selectedText || '').trim();
-                        if (wOpt) {
-                            qStatsMap[qid].wrongOpts[wOpt] = (qStatsMap[qid].wrongOpts[wOpt] || 0) + 1;
-                        }
                         studentWrongMap[sid][qid] = (studentWrongMap[sid][qid] || 0) + 1;
                     }
                     
@@ -201,24 +224,27 @@ window.AdminFirebase = (function() {
             
             let topWrong = '';
             let topWrongCount = 0;
-            Object.entries(q.wrongOpts).forEach(([opt, count]) => {
-                if (count > topWrongCount) {
+            Object.entries(q.optionCounts).forEach(([opt, count]) => {
+                const cleanOpt = opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+                const cleanCorrectText = (q.correctText || "").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+                if (cleanOpt !== cleanCorrectText && count > topWrongCount) {
                     topWrongCount = count;
                     topWrong = opt;
                 }
             });
             
-            const qInfo = qMap.get(q.qid) || {};
-            
             return {
-                '題目ID': q.qid,
-                '分類': q.topic,
-                '認知類型': q.cogType,
-                '題目': qInfo.text || '無題目內容',
-                '答對率': total > 0 ? rate : '-',
-                '作答題數': total,
-                '平均作答秒數': avgSec || '-',
-                '常錯選項': topWrong ? topWrong + " (" + topWrongCount + "次)" : '-'
+                qid: q.qid,
+                topic: q.topic,
+                cogType: q.cogType,
+                text: q.text || '無題目內容',
+                rate: rate,
+                total: total,
+                correct: q.correct,
+                avgSec: avgSec,
+                optionCounts: q.optionCounts,
+                correctText: q.correctText,
+                topWrong: topWrong ? topWrong + " (" + topWrongCount + "次)" : '-'
             };
         });
 
@@ -227,7 +253,8 @@ window.AdminFirebase = (function() {
             const avgSec = t.countWithSec > 0 ? Math.round(t.totalSec / t.countWithSec) : 0;
             return {
                 topic: t.topic,
-                avgScore: total > 0 ? Math.round((t.correct / total) * 100) : 0,
+                rate: total > 0 ? Math.round((t.correct / total) * 100) : 0,
+                total: total,
                 avgTime: avgSec
             };
         });
