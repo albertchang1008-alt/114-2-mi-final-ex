@@ -512,6 +512,8 @@ function doPost(e) {
     if (action === "registerStudent")    return handleRegisterStudent(payload);
     if (action === "recordLogin")        return handleRecordLogin(payload);
     if (action === "adminLogin")         return handleAdminLogin(payload);
+    if (action === "getTeacherDataRaw")  return handleGetTeacherDataRaw();
+    if (action === "getLoginLogsRaw")    return handleGetLoginLogsRaw();
     if (action === "getQuizByCount")     return handleGetQuizByCount(payload);
     if (action === "getTopicQuestions")  return handleGetTopicQuestions(payload);
     if (action === "batchJudge")         return handleBatchJudge(payload);
@@ -1080,6 +1082,34 @@ function handleAdminLogin(payload) {
       return jsonResponse({ status: "ok", verified: true, adminName: adminId });
   }
   return jsonResponse({ status: "ok", verified: false, message: "帳號或密碼錯誤" });
+}
+
+function handleGetTeacherDataRaw() {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty('FIREBASE_PROJECT_ID');
+  if (!projectId) return jsonResponse({ status: 'error', message: '尚未設定 FIREBASE_PROJECT_ID' });
+  try {
+    var token = firebaseAccessTokenFromServiceAccount();
+    var rawDocs = firebaseFetchAllDocuments(projectId, token, 'answerBatches');
+    var docs = rawDocs.map(parseFirestoreDoc);
+    return jsonResponse({ status: 'ok', batches: docs });
+  } catch(e) {
+    return jsonResponse({ status: 'error', message: e.toString() });
+  }
+}
+
+function handleGetLoginLogsRaw() {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty('FIREBASE_PROJECT_ID');
+  if (!projectId) return jsonResponse({ status: 'error', message: '尚未設定 FIREBASE_PROJECT_ID' });
+  try {
+    var token = firebaseAccessTokenFromServiceAccount();
+    var rawDocs = firebaseFetchAllDocuments(projectId, token, 'loginLogs');
+    var docs = rawDocs.map(parseFirestoreDoc);
+    return jsonResponse({ status: 'ok', logs: docs });
+  } catch(e) {
+    return jsonResponse({ status: 'error', message: e.toString() });
+  }
 }
 
 // ─────────────────────────────────────────────

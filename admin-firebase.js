@@ -26,18 +26,13 @@ window.AdminFirebase = (function() {
     }
 
     async function fetchTeacherData() {
-        if (!init()) throw new Error('Firebase 尚未初始化');
+        if (!window.postGAS) throw new Error('postGAS function not found');
 
-        const c = window.FIREBASE_V18_CONFIG.collections || {};
+        // 改由 GAS 透過 REST API 抓取 raw data 以避開 Firebase 權限限制
+        const res = await window.postGAS({ action: 'getTeacherDataRaw' });
+        if (res.status !== 'ok') throw new Error(res.message || '無法抓取資料');
         
-        // 抓取所有 answerBatches
-        const snap = await db.collection(c.answerBatches || 'answerBatches').get();
-        const batches = [];
-        snap.forEach(doc => {
-            const data = doc.data();
-            data._id = doc.id;
-            batches.push(data);
-        });
+        const batches = res.batches || [];
 
         // 照時間排序
         batches.sort((a, b) => {
@@ -263,16 +258,13 @@ window.AdminFirebase = (function() {
     }
 
     async function getDuplicateLoginReport() {
-        if (!init()) throw new Error('Firebase 尚未初始化');
-        const c = window.FIREBASE_V18_CONFIG.collections || {};
+        if (!window.postGAS) throw new Error('postGAS not found');
         
-        const loginSnap = await db.collection(c.loginLogs || 'loginLogs').get();
-        const logins = [];
-        loginSnap.forEach(doc => logins.push(doc.data()));
+        const loginRes = await window.postGAS({ action: 'getLoginLogsRaw' });
+        const logins = loginRes.status === 'ok' ? loginRes.logs : [];
         
-        const scoreSnap = await db.collection(c.answerBatches || 'answerBatches').get();
-        const batches = [];
-        scoreSnap.forEach(doc => batches.push(doc.data()));
+        const scoreRes = await window.postGAS({ action: 'getTeacherDataRaw' });
+        const batches = scoreRes.status === 'ok' ? scoreRes.batches : [];
 
         const studentMap = {}; 
         logins.forEach(l => {
