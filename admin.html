@@ -3096,20 +3096,21 @@ function renderTeacherDashboard(data) {
     renderTopicChart(tStats);
     
     // ★ 動態渲染連續小時制趨勢圖
-    renderDynamicTrendChart('ALL');
+    renderDynamicTrendChart({ className: 'ALL' });
 }
 
 let trendChartInst = null;
-function renderDynamicTrendChart(className = 'ALL') {
+function renderDynamicTrendChart(options = { className: 'ALL', studentId: null }) {
     const sHist = teacherData?.studentHistory || {};
     
-    // 1. 蒐集指定班級的所有作答紀錄並精確到小時
+    // 1. 蒐集指定條件的所有作答紀錄並精確到小時
     const hourlyMap = {};
     let minTime = Infinity;
     let maxTime = -Infinity;
     
-    Object.values(sHist).forEach(student => {
-        if (className !== 'ALL' && student.class !== className) return;
+    Object.entries(sHist).forEach(([sid, student]) => {
+        if (options.studentId && sid !== options.studentId) return;
+        if (!options.studentId && options.className !== 'ALL' && student.class !== options.className) return;
         
         student.attempts.forEach(a => {
             if (!a.date) return;
@@ -3153,7 +3154,13 @@ function renderDynamicTrendChart(className = 'ALL') {
     // 3. 更新標題
     const titleEl = document.getElementById("trend-chart-title");
     if (titleEl) {
-        titleEl.textContent = `📈 作答趨勢 (${className === 'ALL' ? '全校' : className})`;
+        let titleSuffix = '全校';
+        if (options.studentId && sHist[options.studentId]) {
+            titleSuffix = `${sHist[options.studentId].name}`;
+        } else if (options.className !== 'ALL') {
+            titleSuffix = options.className;
+        }
+        titleEl.textContent = `📈 作答趨勢 (${titleSuffix})`;
     }
 
     // 4. 繪製圖表
@@ -3330,7 +3337,7 @@ function openClassView(className) {
     document.getElementById("class-view-title").textContent = `${className} — ${titleSuffix}`;
 
     // ★ 切換動態趨勢圖為該班級
-    renderDynamicTrendChart(className);
+    renderDynamicTrendChart({ className: className });
 
     // 取得該班所有學生
     const classStudents = Object.entries(sHist)
@@ -3381,7 +3388,7 @@ function closeClassView() {
     document.getElementById("class-list").classList.remove("hidden");
     
     // ★ 恢復全校趨勢圖
-    renderDynamicTrendChart('ALL');
+    renderDynamicTrendChart({ className: 'ALL' });
 }
 
 // ★ 點入學生：傳入 sid + topic，只顯示該單元的歷程
@@ -3396,6 +3403,9 @@ function openClassStudentDetail(sid, filterTopic) {
     detail.classList.remove("hidden");
     document.getElementById("class-detail-name").textContent =
         `${info.name}（${sid}）— ${filterTopic || "全部"}`;
+
+    // ★ 切換趨勢圖為該學生
+    renderDynamicTrendChart({ studentId: sid });
 
     // ★ 只顯示該單元的完整測驗（排除錯題重做）
     const filteredAttempts = info.attempts
@@ -3481,6 +3491,10 @@ function openClassStudentDetail(sid, filterTopic) {
 function closeClassStudentDetail() {
     document.getElementById("class-student-detail").classList.add("hidden");
     document.getElementById("class-student-list").classList.remove("hidden");
+    
+    // ★ 恢復班級趨勢圖
+    const currentClass = document.getElementById("class-view-title").textContent.split("—")[0].trim();
+    renderDynamicTrendChart({ className: currentClass });
 }
 
 // ── Tab 2：題目難度分析（加分類篩選）──────────
