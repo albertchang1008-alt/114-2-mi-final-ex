@@ -578,6 +578,7 @@
             <!-- Tab 切換 -->
             <div class="flex gap-2 mb-6 flex-wrap">
                 <button class="tab-btn active px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('class',event)">🏫 班級總覽</button>
+                <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('bi',event)">📈 進階 BI 報表</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('question',event)" id="tab-btn-question">📋 題目難度分析 <span id="tab-question-badge" class="hidden text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">需載入</span></button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('topic',event)" id="tab-btn-topic">📚 單元統計 <span id="tab-topic-badge" class="hidden text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">需載入</span></button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('analysis',event)" id="tab-btn-analysis">🧭 教學決策</button>
@@ -598,6 +599,22 @@
                 <h2 class="text-lg font-bold text-gray-800 mb-5">班級作答總覽</h2>
                 <!-- 班級列表 -->
                 <div id="class-list" class="space-y-3 mb-6"></div>
+            </div>
+
+            <!-- Tab 2：進階 BI 報表 -->
+            <div id="tab-bi" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-5">Looker Studio 進階分析</h2>
+                <div class="w-full relative" style="padding-top: 75%;">
+                    <iframe 
+                        class="absolute top-0 left-0 w-full h-full rounded-xl border border-gray-200"
+                        src="https://datastudio.google.com/embed/reporting/15f096d3-f621-435d-b0cb-d2d4948c1f2f/page/BKO1F" 
+                        frameborder="0" 
+                        style="border:0" 
+                        allowfullscreen 
+                        sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">
+                    </iframe>
+                </div>
+            </div>
                 <!-- 班級學生列表（點入後顯示） -->
                 <div id="class-student-view" class="hidden border-t pt-6">
                     <div class="flex items-center gap-3 mb-5">
