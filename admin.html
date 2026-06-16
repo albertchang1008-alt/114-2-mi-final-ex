@@ -546,6 +546,10 @@
                     class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
                     📊 更新成績總表
                 </button>
+                <button onclick="syncFirebaseToSheet()" id="backup-sheet-btn"
+                    class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
+                    💾 補齊缺失的 Firebase 成績至 Sheet
+                </button>
                 <button onclick="closeTeacherPortal()"
                     class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
                     ✕ 登出
@@ -1085,6 +1089,24 @@ async function updateScoreTable() {
         btn.innerHTML = "✅ " + (res.message || "更新完成");
         setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
     } catch(e) {
+        btn.innerHTML = "❌ 失敗";
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+    }
+}
+
+// ★ 補齊 Firebase 成績
+async function syncFirebaseToSheet() {
+    const btn = document.getElementById("backup-sheet-btn");
+    const origText = btn.innerHTML;
+    btn.innerHTML = "⏳ 同步中...";
+    btn.disabled = true;
+    try {
+        const res = await postGAS({ action: "syncFirebaseToSheet" });
+        alert(res.message);
+        btn.innerHTML = "✅ 同步完成";
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+    } catch(e) {
+        alert('備份失敗：' + e.message);
         btn.innerHTML = "❌ 失敗";
         setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
     }
