@@ -9,6 +9,11 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email));
     }
 
+    match /studentsWhitelist/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+      allow write: if false;
+    }
+
     match /system/{docId} {
       allow read: if true;
       allow write: if false;

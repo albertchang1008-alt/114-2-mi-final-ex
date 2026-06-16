@@ -6,13 +6,8 @@
     <title>教師分析後台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js"></script>
-    <script src="firebase-v18.js"></script>
-    <script src="admin-firebase.js"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -537,7 +532,7 @@
             <div>
                 <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
                     📊 教師分析後台
-                    <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium" id="admin-version-badge">v1.0</span>
+                    <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium" id="admin-version-badge">v2.0</span>
                 </h1>
                 <p class="text-sm text-gray-500 mt-1">登入身份：<span id="admin-display-name" class="font-medium text-sky-600"></span></p>
             </div>
@@ -550,10 +545,6 @@
                 <button onclick="updateScoreTable()" id="score-table-btn"
                     class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
                     📊 更新成績總表
-                </button>
-                <button onclick="AdminFirebase.syncFirebaseToSheet().then(res => alert(res.message)).catch(e => alert('備份失敗：' + e.message))" id="backup-sheet-btn"
-                    class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
-                    💾 同步備份至 Sheet
                 </button>
                 <button onclick="closeTeacherPortal()"
                     class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
@@ -3058,7 +3049,7 @@ async function loadTeacherData() {
     detailStatsLoaded  = false;
     detailStatsLoading = false;
     try {
-        const res = await window.AdminFirebase.fetchTeacherData();
+        const res = await postGAS({ action: "getTeacherData" });
         if (res.status !== "ok") throw new Error(res.message || "讀取失敗");
         teacherData = res;
         // 初始化空值，避免前端存取到 undefined
@@ -4402,7 +4393,7 @@ async function loadDupLoginReport() {
     const list = document.getElementById("dup-login-list");
     list.innerHTML = '<div class="text-center py-8"><div class="w-8 h-8 border-4 border-sky-200 border-t-sky-500 rounded-full animate-spin mx-auto mb-3"></div><p class="text-gray-400 text-sm">分析中...</p></div>';
     try {
-        const res = await window.AdminFirebase.getDuplicateLoginReport();
+        const res = await postGAS({ action: "getDuplicateLoginReport" });
         if (res.status !== "ok") throw new Error(res.message);
         dupLoginLoaded = true;
         renderDupLoginReport(res.suspects || []);
