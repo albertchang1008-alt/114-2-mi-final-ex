@@ -3083,9 +3083,12 @@ function renderTeacherDashboard(data) {
 
     const allStudents   = Object.entries(sHist);
     const totalAttempts = allStudents.reduce((s,[,v])=>s+v.attempts.length,0);
-    const avgRate       = qStats.length > 0
-        ? Math.round(qStats.reduce((s,q)=>s+(q.rate??0),0)/qStats.length) : 0;
-    const hardest       = [...qStats].sort((a,b)=>(a.rate??100)-(b.rate??100))[0];
+    
+    // Fix avgRate calculation using classList totals instead of missing questionStats
+    const totalCorrect = cList.reduce((s,c)=>s+(c.correct||0), 0);
+    const totalQuestions = cList.reduce((s,c)=>s+(c.total||0), 0);
+    const avgRate = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
 
     // 概覽卡片
     document.getElementById("overview-cards").innerHTML = [

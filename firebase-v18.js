@@ -551,6 +551,21 @@
     }
   }
 
+  async function updatePresence(studentId, name, email) {
+    if (!init()) return;
+    try {
+      var studentStatsRef = db.collection(c.studentStats || "studentStats").doc(safeDocId(studentId || email));
+      await studentStatsRef.set({
+        studentId: studentId,
+        name: name,
+        email: String(email).toLowerCase().trim(),
+        lastActive: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("updatePresence error:", err);
+    }
+  }
+
   window.FirebaseV18 = {
     isEnabled: isEnabled,
     init: init,
@@ -566,6 +581,7 @@
     verifySession: verifySession,
     getMyWrongQuestions: getMyWrongQuestions,
     getMyCompletion: getMyCompletion,
-    recordLogin: recordLogin
+    recordLogin: recordLogin,
+    updatePresence: updatePresence
   };
 })();
