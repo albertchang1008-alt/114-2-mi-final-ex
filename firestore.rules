@@ -5,6 +5,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function inWhitelist() {
+      return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email));
+    }
+
     match /system/{docId} {
       allow read: if true;
       allow write: if false;
@@ -35,13 +39,13 @@ service cloud.firestore {
     }
 
     match /answerDetails/{docId} {
-      allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
+      allow create: if signedIn() && inWhitelist() && request.resource.data.email == request.auth.token.email;
       allow read, update, delete: if false;
     }
 
     match /answerBatches/{docId} {
-      allow create: if signedIn() && request.resource.data.email == request.auth.token.email;
-      allow read: if signedIn() && resource.data.email == request.auth.token.email;
+      allow create: if signedIn() && inWhitelist() && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && inWhitelist() && resource.data.email == request.auth.token.email;
       allow update, delete: if false;
     }
 

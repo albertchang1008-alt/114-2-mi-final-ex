@@ -161,9 +161,24 @@
 
   async function findStudentByEmail(email) {
     if (!init()) return null;
-    var c = cfg.collections || {};
     var target = String(email || "").toLowerCase().trim();
     if (!target) return null;
+
+    // 先檢查白名單集合 (這是在 Code.gs 中推播的，文件 ID 就是小寫 email)
+    var doc = await db.collection("studentsWhitelist").doc(target).get();
+    if (doc.exists) {
+      var data = doc.data();
+      return {
+        exists: true,
+        studentId: data.studentId || doc.id,
+        name: data.name || data.studentName || data.studentId || doc.id,
+        className: data.className || data.class || "未分班",
+        email: target
+      };
+    }
+    
+    // 退回檢查 students 集合 (舊邏輯相容)
+    var c = cfg.collections || {};
     var snap = await db.collection(c.students || "students").where("emailLower", "==", target).limit(1).get();
     if (!snap.empty) {
       var data = snap.docs[0].data();
@@ -171,15 +186,17 @@
         exists: true,
         studentId: data.studentId || snap.docs[0].id,
         name: data.name || data.studentName || data.studentId || snap.docs[0].id,
-        className: data.className || data.class || "未分班"
+        className: data.className || data.class || "未分班",
+        email: target
       };
     }
+    
     var prefix = target.split("@")[0];
     if (prefix) {
-      var doc = await db.collection(c.students || "students").doc(prefix).get();
-      if (doc.exists) {
-        var d = doc.data();
-        return { exists: true, studentId: d.studentId || prefix, name: d.name || prefix, className: d.className || "未分班" };
+      var docPrefix = await db.collection(c.students || "students").doc(prefix).get();
+      if (docPrefix.exists) {
+        var d = docPrefix.data();
+        return { exists: true, studentId: d.studentId || prefix, name: d.name || prefix, className: d.className || "未分班", email: target };
       }
     }
     return { exists: false, message: "查無學生資料，請確認 Email 是否已在學生名單" };

@@ -346,10 +346,16 @@ function handleSyncFirebaseV18(payload) {
   writes.push({ update: { name: firestoreDocName(projectId, "system", "questions"), fields: firebaseFields(questionsPayload) } });
 
   data.students.forEach(function(s) {
+    // 寫入學號為 Key 的文件
     writes.push({ update: { name: firestoreDocName(projectId, "students", s.studentId), fields: firebaseFields(s) } });
+    
+    // 寫入 Email 為 Key 的白名單文件 (給 Firebase Auth 使用)
+    if (s.emailLower) {
+      writes.push({ update: { name: firestoreDocName(projectId, "studentsWhitelist", s.emailLower), fields: firebaseFields(s) } });
+    }
   });
   firebaseBatchWrite(projectId, token, writes);
-  return jsonResponse({ status: "ok", message: "Firebase 同步完成 (已優化為單一題目文件)", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
+  return jsonResponse({ status: "ok", message: "Firebase 同步完成 (包含 Email 白名單)", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
 }
 
 // ── 掃描題庫建立分類清單，並更新快取 Sheet ──
