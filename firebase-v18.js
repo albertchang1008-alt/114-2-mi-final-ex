@@ -165,16 +165,20 @@
     if (!target) return null;
 
     // 先檢查白名單集合 (這是在 Code.gs 中推播的，文件 ID 就是小寫 email)
-    var doc = await db.collection("studentsWhitelist").doc(target).get();
-    if (doc.exists) {
-      var data = doc.data();
-      return {
-        exists: true,
-        studentId: data.studentId || doc.id,
-        name: data.name || data.studentName || data.studentId || doc.id,
-        className: data.className || data.class || "未分班",
-        email: target
-      };
+    try {
+      var doc = await db.collection("studentsWhitelist").doc(target).get();
+      if (doc.exists) {
+        var data = doc.data();
+        return {
+          exists: true,
+          studentId: data.studentId || doc.id,
+          name: data.name || data.studentName || data.studentId || doc.id,
+          className: data.className || data.class || "未分班",
+          email: target
+        };
+      }
+    } catch (err) {
+      console.warn("studentsWhitelist 讀取失敗，退回舊邏輯:", err);
     }
     
     // 退回檢查 students 集合 (舊邏輯相容)

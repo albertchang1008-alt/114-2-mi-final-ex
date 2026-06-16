@@ -6,11 +6,11 @@ service cloud.firestore {
     }
 
     function inWhitelist() {
-      return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email));
+      return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email.lower()));
     }
 
     match /studentsWhitelist/{email} {
-      allow read: if request.auth != null && request.auth.token.email == email;
+      allow read: if signedIn();
       allow write: if false;
     }
 
