@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617c"></script>
-    <script src="firebase-v18.js?v=20260617c"></script>
+    <script src="firebase-config.js?v=20260617d"></script>
+    <script src="firebase-v18.js?v=20260617d"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -493,22 +493,22 @@ function getBrowserInfo() {
 
 // ★ v1.66 登入時取得 token，記錄備查（不再輪詢）
 async function loginWithToken(sid, name) {
-    const ip      = await fetchClientIP();
-    const device  = getDeviceInfo();
-    const browser = getBrowserInfo();
+    // 已全面移至 Firestore，loginWithToken 改為只建立/更新 session，不再依賴 GAS
     try {
-        const res = await postGAS({ action: "loginStudent", studentId: sid, name, ip, device, browser });
-        if (res.status === "kicked") {
-            showKicked();
-            return false;
+        const device  = getDeviceInfo();
+        const browser = getBrowserInfo();
+        // createSession 已在 handleFirebaseLogin / handleGoogleCallback 中呼叫過
+        // 這裡只作為 Fallback，確保 sessionToken 一定有值
+        if (!sessionToken) {
+            const sessId = await window.FirebaseV18.createSession(sid, device, browser);
+            sessionToken = sessId || "local-" + Date.now();
         }
-        if (res.status === "ok" && res.token) {
-            sessionToken = res.token;
-            clientIP     = ip;  // ★ 存下 IP 供後續送分用
-            return true;
-        }
-        return false;
-    } catch(e) { console.warn("loginWithToken 失敗", e); return false; }
+        return true;
+    } catch(e) {
+        console.warn("loginWithToken (Firestore) 失敗，放行繼續", e);
+        sessionToken = "local-" + Date.now(); // fail-open：不擋登入
+        return true;
+    }
 }
 
 // ★ v1.66 已移除 Session 輪詢（改為重複登入記錄）
@@ -528,15 +528,15 @@ function showKicked() {
 async function verifySessionOnce() {
     if (!studentId || !sessionToken) return true;
     try {
-        const res = await postGAS({ action: "verifySession", studentId, token: sessionToken });
-        if (res.valid === false || res.status === "kicked") {
+        const res = await window.FirebaseV18.verifySession(studentId, sessionToken);
+        if (res && res.valid === false && res.status === "kicked") {
             showKicked();
             return false;
         }
     } catch(e) {
-        console.warn("verifySessionOnce 失敗", e);
+        console.warn("verifySessionOnce (Firestore) 失敗，放行繼續", e);
     }
-    return true;
+    return true; // fail-open：Firebase 不通時不踢人
 }
 
 // 校區倒數計時器

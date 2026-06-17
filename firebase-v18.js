@@ -427,11 +427,14 @@
   async function verifySession(studentId, sessionId) {
     if (!init()) return { valid: true };
     if (!studentId || !sessionId) return { valid: true };
+    // 如果 sessionId 是 local- 開頭（fallback），直接放行
+    if (typeof sessionId === 'string' && sessionId.startsWith('local-')) return { valid: true };
     try {
       var c = cfg.collections || {};
       var ref = db.collection(c.sessions || "sessions").doc(safeDocId(studentId));
       var snap = await ref.get();
-      if (!snap.exists) return { valid: false, status: "kicked" };
+      // 如果 session doc 不存在（第一次登入或 Firestore 延遲），直接放行
+      if (!snap.exists) return { valid: true };
       var data = snap.data();
       if (data.sessionId !== sessionId) return { valid: false, status: "kicked" };
       return { valid: true };
