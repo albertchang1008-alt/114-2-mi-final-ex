@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617j"></script>
-    <script src="firebase-v18.js?v=20260617j"></script>
+    <script src="firebase-config.js?v=20260617k"></script>
+    <script src="firebase-v18.js?v=20260617k"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -2346,7 +2346,8 @@ async function loadWrongFcCount() {
             const email = window.FirebaseV18.currentUserEmail();
             if (email && window.firebase) {
                 const docSnap = await window.firebase.firestore().collection("studentsWhitelist").doc(email).get();
-                if (!docSnap.exists) {
+                // 如果不在學生白名單中，且不是特例放行的教師 Email，才顯示警告
+                if (!docSnap.exists && email !== "hhchang@ctcn.edu.tw") {
                     whitelistErrorNote = `<br><span class="text-xs text-amber-600 font-normal">⚠️ 白名單警告：您的 Email (${email}) 不在學生白名單 (studentsWhitelist) 中。若是教師/管理員，請確認已部署最新的 Firebase 安全規則以獲得放行。</span>`;
                 }
             }
