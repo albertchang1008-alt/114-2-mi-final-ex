@@ -579,6 +579,7 @@
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('analysis',event)" id="tab-btn-analysis">🧭 教學決策</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('settings',event)">⚙️ 完成度設定</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('dupLogin',event)" id="tab-btn-dupLogin">⚠️ 重複登入</button>
+                <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('profile',event)">🧑‍🎓 學生履歷</button>
             </div>
 
             <!-- ★ 新增：每日作答趨勢圖 -->
@@ -842,6 +843,34 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ★ 新增：學生履歷 Tab -->
+<div id="tab-profile" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hidden">
+    <h2 class="text-lg font-bold text-gray-800 mb-4">🧑‍🎓 學生履歷查詢</h2>
+    <div class="flex gap-2 mb-6">
+        <input type="text" id="profile-sid-input" placeholder="請輸入學號..." class="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none">
+        <button onclick="loadStudentProfile()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2 rounded-lg transition">🔍 查詢</button>
+    </div>
+    
+    <div id="profile-loading" class="hidden text-center py-10">
+        <div class="loader mx-auto mb-3" style="border-top-color:#0ea5e9;"></div>
+        <p class="text-sm text-gray-500">正在撈取連線與作答紀錄...</p>
+    </div>
+    
+    <div id="profile-content" class="hidden">
+        <!-- 基本資料 -->
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 flex flex-wrap gap-4 text-sm">
+            <div class="w-full md:w-auto"><span class="text-gray-500">學號：</span><span id="prof-sid" class="font-bold text-gray-800"></span></div>
+            <div class="w-full md:w-auto"><span class="text-gray-500">姓名：</span><span id="prof-name" class="font-bold text-gray-800"></span></div>
+            <div class="w-full md:w-auto"><span class="text-gray-500">班級：</span><span id="prof-class" class="font-bold text-gray-800"></span></div>
+            <div class="w-full md:w-auto"><span class="text-gray-500">首次登入：</span><span id="prof-first" class="text-gray-700"></span></div>
+            <div class="w-full md:w-auto"><span class="text-gray-500">最近連線：</span><span id="prof-last" class="font-bold text-green-600"></span></div>
+        </div>
+        
+        <h3 class="font-bold text-gray-700 mb-3 border-b pb-2">📋 歷次交卷紀錄</h3>
+        <div id="profile-batches" class="space-y-3"></div>
     </div>
 </div>
 
@@ -2029,6 +2058,109 @@ function startFlashcard(questions, topic) {
     show("flashcard-section");
     document.getElementById("fc-topic-title").textContent = `🃏 ${topic}`;
     renderFlashcard();
+}
+
+async function loadStudentProfile() {
+    const sid = document.getElementById("profile-sid-input").value.trim();
+    if (!sid) return alert("請輸入學號");
+    
+    document.getElementById("profile-content").classList.add("hidden");
+    document.getElementById("profile-loading").classList.remove("hidden");
+    
+    try {
+        const res = await postGAS({ action: "getStudentProfile", studentId: sid });
+        document.getElementById("profile-loading").classList.add("hidden");
+        
+        if (!res.profile) {
+            alert("找不到該學號的基本資料");
+            return;
+        }
+        
+        document.getElementById("profile-content").classList.remove("hidden");
+        document.getElementById("prof-sid").innerText = res.profile.studentId;
+        document.getElementById("prof-name").innerText = res.profile.name || "未填";
+        document.getElementById("prof-class").innerText = res.profile.className || "未填";
+        document.getElementById("prof-first").innerText = new Date(res.profile.firstLogin).toLocaleString();
+        document.getElementById("prof-last").innerText = new Date(res.profile.lastLogin).toLocaleString();
+        
+        const container = document.getElementById("profile-batches");
+        container.innerHTML = "";
+        
+        if (!res.batches || res.batches.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-sm">無交卷紀錄</p>';
+            return;
+        }
+        
+        res.batches.forEach(b => {
+            const dt = new Date(b.timestamp).toLocaleString();
+            const div = document.createElement("div");
+            div.className = "border border-gray-200 rounded-lg p-4 hover:shadow-sm transition bg-white";
+            div.innerHTML = `
+                <div class="flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                        <div class="text-xs text-gray-500 mb-1">${dt}</div>
+                        <div class="font-bold text-gray-800 text-sm">單元：${b.topic} <span class="ml-2 text-xs font-normal text-gray-400">耗時：${b.duration}秒</span></div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="text-lg font-bold ${b.score >= 60 ? 'text-green-600' : 'text-red-500'}">${b.score} 分</div>
+                        ${b.batchId ? `<button onclick="loadBatchDetails('${b.batchId}', this)" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-medium transition">檢視明細</button>` : `<span class="text-xs text-gray-400">舊資料無明細</span>`}
+                    </div>
+                </div>
+                <div class="batch-details-container mt-3 hidden border-t border-gray-100 pt-3"></div>
+            `;
+            container.appendChild(div);
+        });
+        
+    } catch (err) {
+        document.getElementById("profile-loading").classList.add("hidden");
+        alert("查詢失敗：" + err.message);
+    }
+}
+
+async function loadBatchDetails(batchId, btn) {
+    const container = btn.closest("div.p-4").querySelector(".batch-details-container");
+    if (!container.classList.contains("hidden")) {
+        container.classList.add("hidden");
+        btn.innerText = "檢視明細";
+        return;
+    }
+    
+    btn.innerText = "讀取中...";
+    btn.disabled = true;
+    
+    try {
+        const res = await postGAS({ action: "getBatchDetails", batchId: batchId });
+        btn.innerText = "收起明細";
+        btn.disabled = false;
+        container.classList.remove("hidden");
+        
+        if (!res.details || res.details.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400">無單題明細資料</p>';
+            return;
+        }
+        
+        let html = '<div class="space-y-2">';
+        res.details.forEach((d, i) => {
+            const isCorrect = d.isCorrect;
+            const icon = isCorrect ? '✅' : '❌';
+            const color = isCorrect ? 'text-green-700' : 'text-red-600';
+            const bg = isCorrect ? 'bg-green-50' : 'bg-red-50';
+            html += `
+                <div class="${bg} rounded p-2 text-xs">
+                    <div class="font-medium ${color} mb-1">${i+1}. ${icon} 題號：${d.questionId || '?'}</div>
+                    <div class="text-gray-600 mb-0.5"><span class="text-gray-400">學生選擇：</span>${d.selectedText || '未作答'}</div>
+                    ${!isCorrect ? `<div class="text-gray-600"><span class="text-gray-400">正確答案：</span>${d.correctText || '?'}</div>` : ''}
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        
+    } catch (err) {
+        btn.innerText = "檢視明細";
+        btn.disabled = false;
+        alert("讀取明細失敗：" + err.message);
+    }
 }
 
 function renderFlashcard() {
@@ -4503,7 +4635,109 @@ function renderDupLoginReport(suspects) {
         </div>`;
     }).join("");
 }
+// ── Tab：學生履歷查詢 ──────────────────────────
+async function loadStudentProfile() {
+    const sid = document.getElementById("profile-sid-input").value.trim();
+    if (!sid) return alert("請輸入學號");
+    
+    document.getElementById("profile-content").classList.add("hidden");
+    document.getElementById("profile-loading").classList.remove("hidden");
+    
+    try {
+        const res = await postGAS({ action: "getStudentProfile", studentId: sid });
+        document.getElementById("profile-loading").classList.add("hidden");
+        
+        if (!res.profile) {
+            alert("找不到該學號的基本資料");
+            return;
+        }
+        
+        document.getElementById("profile-content").classList.remove("hidden");
+        document.getElementById("prof-sid").innerText = res.profile.studentId;
+        document.getElementById("prof-name").innerText = res.profile.name || "未填";
+        document.getElementById("prof-class").innerText = res.profile.className || "未填";
+        document.getElementById("prof-first").innerText = new Date(res.profile.firstLogin).toLocaleString();
+        document.getElementById("prof-last").innerText = new Date(res.profile.lastLogin).toLocaleString();
+        
+        const container = document.getElementById("profile-batches");
+        container.innerHTML = "";
+        
+        if (!res.batches || res.batches.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-sm">無交卷紀錄</p>';
+            return;
+        }
+        
+        res.batches.forEach(b => {
+            const dt = new Date(b.timestamp).toLocaleString();
+            const div = document.createElement("div");
+            div.className = "border border-gray-200 rounded-lg p-4 hover:shadow-sm transition bg-white";
+            div.innerHTML = `
+                <div class="flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                        <div class="text-xs text-gray-500 mb-1">${dt}</div>
+                        <div class="font-bold text-gray-800 text-sm">單元：${b.topic} <span class="ml-2 text-xs font-normal text-gray-400">耗時：${b.duration}秒</span></div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="text-lg font-bold ${b.score >= 60 ? 'text-green-600' : 'text-red-500'}">${b.score} 分</div>
+                        ${b.batchId ? `<button onclick="loadBatchDetails('${b.batchId}', this)" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-medium transition">檢視明細</button>` : `<span class="text-xs text-gray-400">舊資料無明細</span>`}
+                    </div>
+                </div>
+                <div class="batch-details-container mt-3 hidden border-t border-gray-100 pt-3"></div>
+            `;
+            container.appendChild(div);
+        });
+        
+    } catch (err) {
+        document.getElementById("profile-loading").classList.add("hidden");
+        alert("查詢失敗：" + err.message);
+    }
+}
 
+async function loadBatchDetails(batchId, btn) {
+    const container = btn.closest("div.p-4").querySelector(".batch-details-container");
+    if (!container.classList.contains("hidden")) {
+        container.classList.add("hidden");
+        btn.innerText = "檢視明細";
+        return;
+    }
+    
+    btn.innerText = "讀取中...";
+    btn.disabled = true;
+    
+    try {
+        const res = await postGAS({ action: "getBatchDetails", batchId: batchId });
+        btn.innerText = "收起明細";
+        btn.disabled = false;
+        container.classList.remove("hidden");
+        
+        if (!res.details || res.details.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400">無單題明細資料</p>';
+            return;
+        }
+        
+        let html = '<div class="space-y-2">';
+        res.details.forEach((d, i) => {
+            const isCorrect = d.isCorrect;
+            const icon = isCorrect ? '✅' : '❌';
+            const color = isCorrect ? 'text-green-700' : 'text-red-600';
+            const bg = isCorrect ? 'bg-green-50' : 'bg-red-50';
+            html += `
+                <div class="${bg} rounded p-2 text-xs">
+                    <div class="font-medium ${color} mb-1">${i+1}. ${icon} 題號：${d.questionId || '?'}</div>
+                    <div class="text-gray-600 mb-0.5"><span class="text-gray-400">學生選擇：</span>${d.selectedText || '未作答'}</div>
+                    ${!isCorrect ? `<div class="text-gray-600"><span class="text-gray-400">正確答案：</span>${d.correctText || '?'}</div>` : ''}
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        
+    } catch (err) {
+        btn.innerText = "檢視明細";
+        btn.disabled = false;
+        alert("讀取明細失敗：" + err.message);
+    }
+}
 </script>
 </body>
 </html>

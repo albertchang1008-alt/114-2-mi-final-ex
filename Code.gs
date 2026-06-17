@@ -542,6 +542,8 @@ function doPost(e) {
     if (action === "getFirebaseBootstrap")   return handleGetFirebaseBootstrap(payload);
     if (action === "syncFirebaseV18")        return handleSyncFirebaseV18(payload);
     if (action === "syncFirebaseToSheet")    return handleSyncFirebaseToSheet(payload);
+    if (action === "getStudentProfile")      return handleGetStudentProfile(payload);
+    if (action === "getBatchDetails")        return handleGetBatchDetails(payload);
     return jsonResponse({ status: "error", message: "未知的 action：" + action });
   } catch (err) {
     return jsonResponse({ status: "error", message: err.message });
@@ -3451,6 +3453,99 @@ function handleSyncFirebaseToSheet(payload) {
     return jsonResponse({ status: 'ok', message: '同步完成，共新增 ' + newCount + ' 筆測驗紀錄。（為節省系統空間，不再備份作答明細至試算表）', newCount: newCount });
   } catch (err) {
     return jsonResponse({ status: 'error', message: err.message });
+  }
+}
+
+
+// ─────────────────────────────────────────────
+// Action: getStudentProfile
+// ─────────────────────────────────────────────
+function handleGetStudentProfile(payload) {
+  var sid = payload.studentId;
+  if (!sid) return jsonResponse({ status: "error", message: "缺少學號" });
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. 抓取基本資料與登入時間
+  var accountInfo = null;
+  var accountSheet = ss.getSheetByName(SHEET_ACCOUNTS);
+  if (accountSheet && accountSheet.getLastRow() > 1) {
+    var acRows = accountSheet.getDataRange().getValues();
+    for (var i = 1; i < acRows.length; i++) {
+      if (acRows[i][0] && acRows[i][0].toString() === sid.toString()) {
+        accountInfo = {
+          studentId: acRows[i][0],
+          name: acRows[i][1],
+          className: acRows[i][2],
+          email: acRows[i][3],
+          firstLogin: acRows[i][4],
+          lastLogin: acRows[i][5]
+        };
+        break;
+      }
+    }
+  }
+  
+  // 2. 抓取作答歷史清單 (不含明細)
+  var batches = [];
+  var scoreSheet = ss.getSheetByName(SHEET_SCORES);
+  if (scoreSheet && scoreSheet.getLastRow() > 1) {
+    var scRows = scoreSheet.getDataRange().getValues();
+    var headers = scRows[0].map(function(h) { return h.toString().trim(); });
+    var cTime = findColIdx(headers, ["交卷時間","時間"]);
+    var cSid = findColIdx(headers, ["學號"]);
+    var cTopic = findColIdx(headers, ["分類"]);
+    var cScore = findColIdx(headers, ["總分","成績"]);
+    var cDur = findColIdx(headers, ["作答秒數","秒數"]);
+    var cBid = findColIdx(headers, ["批次ID","batchId","批次"]);
+    
+    for (var j = 1; j < scRows.length; j++) {
+      if (cSid !== -1 && scRows[j][cSid] && scRows[j][cSid].toString() === sid.toString()) {
+        batches.push({
+          timestamp: cTime !== -1 ? scRows[j][cTime] : "",
+          topic: cTopic !== -1 ? scRows[j][cTopic] : "",
+          score: cScore !== -1 ? scRows[j][cScore] : 0,
+          duration: cDur !== -1 ? scRows[j][cDur] : 0,
+          batchId: cBid !== -1 ? scRows[j][cBid] : ""
+        });
+      }
+    }
+  }
+  
+  batches.sort(function(a, b) {
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  });
+  
+  return jsonResponse({ status: "ok", profile: accountInfo, batches: batches });
+}
+
+// ─────────────────────────────────────────────
+// Action: getBatchDetails
+// ─────────────────────────────────────────────
+function handleGetBatchDetails(payload) {
+  var batchId = payload.batchId;
+  if (!batchId) return jsonResponse({ status: "error", message: "缺少 batchId" });
+  
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (!projectId) return jsonResponse({ status: "error", message: "未設定 Firebase" });
+  
+  try {
+    var token = firebaseAccessTokenFromServiceAccount();
+    var url = "https://firestore.googleapis.com/v1/projects/" + projectId + "/databases/(default)/documents/answerBatches/" + batchId;
+    var res = UrlFetchApp.fetch(url, {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + token },
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() !== 200) {
+      return jsonResponse({ status: "error", message: "在 Firebase 找不到該批次資料" });
+    }
+    var doc = JSON.parse(res.getContentText());
+    var parsed = parseFirestoreDoc(doc);
+    return jsonResponse({ status: "ok", details: parsed.details || [] });
+  } catch (err) {
+    return jsonResponse({ status: "error", message: err.message });
   }
 }
 
