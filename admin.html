@@ -582,17 +582,17 @@
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('profile',event)">🧑‍🎓 學生履歷</button>
             </div>
 
-            <!-- ★ 新增：每日作答趨勢圖 -->
-            <div id="trend-chart-container" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 id="trend-chart-title" class="text-lg font-bold text-gray-800 mb-4">📈 每日作答趨勢</h2>
-                <div class="relative w-full h-64">
-                    <canvas id="trend-chart"></canvas>
-                </div>
-            </div>
-
             <!-- Tab 1：班級總覽 -->
             <div id="tab-class" class="tab-content active bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <h2 class="text-lg font-bold text-gray-800 mb-5">班級作答總覽</h2>
+                <!-- ★ 每日作答趨勢圖 (移入班級總覽) -->
+                <div id="trend-chart-container" class="bg-gray-50 rounded-2xl border border-gray-100 p-5 mb-6">
+                    <h2 id="trend-chart-title" class="text-lg font-bold text-gray-800 mb-4">📈 每日作答趨勢 (全校)</h2>
+                    <div class="relative w-full h-64">
+                        <canvas id="trend-chart"></canvas>
+                    </div>
+                </div>
+                
+                <h2 class="text-lg font-bold text-gray-800 mb-5">🏫 班級作答總覽</h2>
                 <!-- 班級列表 -->
                 <div id="class-list" class="space-y-3 mb-6"></div>
             </div>
@@ -847,11 +847,16 @@
 </div>
 
 <!-- ★ 新增：學生履歷 Tab -->
-<div id="tab-profile" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hidden">
+<div id="tab-profile" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
     <h2 class="text-lg font-bold text-gray-800 mb-4">🧑‍🎓 學生履歷查詢</h2>
-    <div class="flex gap-2 mb-6">
-        <input type="text" id="profile-sid-input" placeholder="請輸入學號..." class="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none">
-        <button onclick="loadStudentProfile()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2 rounded-lg transition">🔍 查詢</button>
+    <div class="flex flex-wrap gap-3 mb-6 items-center">
+        <select id="profile-class-select" onchange="onProfileClassChange()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto min-w-[120px]">
+            <option value="">選擇班級...</option>
+        </select>
+        <select id="profile-sid-select" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto flex-1 disabled:bg-gray-100 disabled:text-gray-400" disabled>
+            <option value="">先選班級，再選學生...</option>
+        </select>
+        <button onclick="loadStudentProfile()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2 rounded-lg transition w-full md:w-auto">🔍 查詢</button>
     </div>
     
     <div id="profile-loading" class="hidden text-center py-10">
@@ -4032,11 +4037,12 @@ let currentAnalysisView = "remediation";
 async function switchTab(tab, event) {
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-    event.currentTarget.classList.add("active");
+    if (event) event.currentTarget.classList.add("active");
     document.getElementById("tab-"+tab).classList.add("active");
     if (tab === "settings") renderSettingsTab(completionSettings);
     if (tab === "dupLogin" && !dupLoginLoaded) loadDupLoginReport();
     if (tab === "analysis" && !analysisCacheLoaded && !analysisCacheLoading) loadAnalysisCache(false);
+    if (tab === "profile") initProfileDropdowns();
 
     // ★ 懶載入：題目難度分析 / 單元統計
     if ((tab === "question" || tab === "topic") && !detailStatsLoaded && !detailStatsLoading) {
@@ -4636,9 +4642,60 @@ function renderDupLoginReport(suspects) {
     }).join("");
 }
 // ── Tab：學生履歷查詢 ──────────────────────────
+let profileStudentMap = {}; // { class: [{id, name}] }
+
+function initProfileDropdowns() {
+    if (!teacherData || !teacherData.studentHistory) return;
+    const classSet = new Set();
+    profileStudentMap = {};
+    
+    Object.keys(teacherData.studentHistory).forEach(sid => {
+        const s = teacherData.studentHistory[sid];
+        const cls = s.class || '未分班';
+        classSet.add(cls);
+        if (!profileStudentMap[cls]) profileStudentMap[cls] = [];
+        profileStudentMap[cls].push({ id: sid, name: s.name });
+    });
+    
+    const classSel = document.getElementById("profile-class-select");
+    const currentClass = classSel.value;
+    
+    classSel.innerHTML = '<option value="">選擇班級...</option>';
+    Array.from(classSet).sort().forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = c;
+        classSel.appendChild(opt);
+    });
+    
+    if (currentClass && classSet.has(currentClass)) {
+        classSel.value = currentClass;
+    }
+}
+
+function onProfileClassChange() {
+    const cls = document.getElementById("profile-class-select").value;
+    const sidSel = document.getElementById("profile-sid-select");
+    sidSel.innerHTML = '<option value="">請選擇學生...</option>';
+    
+    if (!cls) {
+        sidSel.disabled = true;
+        return;
+    }
+    
+    sidSel.disabled = false;
+    const list = profileStudentMap[cls] || [];
+    list.sort((a,b) => a.id.localeCompare(b.id)).forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = `${s.id} - ${s.name || '未填'}`;
+        sidSel.appendChild(opt);
+    });
+}
+
 async function loadStudentProfile() {
-    const sid = document.getElementById("profile-sid-input").value.trim();
-    if (!sid) return alert("請輸入學號");
+    const sid = document.getElementById("profile-sid-select").value;
+    if (!sid) return alert("請先選擇學生");
     
     document.getElementById("profile-content").classList.add("hidden");
     document.getElementById("profile-loading").classList.remove("hidden");
