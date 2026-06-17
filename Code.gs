@@ -3396,20 +3396,31 @@ function handleSyncFirebaseToSheet(payload) {
     if (!detailSheet) throw new Error("找不到分頁：" + SHEET_DETAILS);
     
     var existingBatches = {};
+    var bCol = -1;
+    var tCol = -1; // 交卷時間
+    var idCol = -1; // 學號
     if (scoreSheet.getLastRow() > 1) {
       var scoreRows = scoreSheet.getDataRange().getValues();
       var headers = scoreRows[0].map(function(h) { return h.toString().trim(); });
-      var bCol = findColIdx(headers, ['批次ID','batchId','批次']);
-      if (bCol !== -1) {
-        for (var i = 1; i < scoreRows.length; i++) {
-          var bid = scoreRows[i][bCol];
-          if (bid) existingBatches[bid.toString()] = true;
+      bCol = findColIdx(headers, ['批次ID','batchId','批次']);
+      tCol = findColIdx(headers, ['交卷時間','時間']);
+      idCol = findColIdx(headers, ['學號']);
+      
+      for (var i = 1; i < scoreRows.length; i++) {
+        if (bCol !== -1 && scoreRows[i][bCol]) {
+          existingBatches[scoreRows[i][bCol].toString()] = true;
+        } else if (tCol !== -1 && idCol !== -1) {
+          // fallback to time+id composite key
+          var t = new Date(scoreRows[i][tCol]).getTime();
+          var sid = scoreRows[i][idCol].toString();
+          if (!isNaN(t) && sid) {
+            existingBatches[t + "_" + sid] = true;
+          }
         }
       }
     }
     
     var newScores = [];
-    var newDetails = [];
     var newCount = 0;
     
     docs.sort(function(a,b) {
@@ -3419,28 +3430,26 @@ function handleSyncFirebaseToSheet(payload) {
     });
     
     docs.forEach(function(d) {
-      if (!d.batchId || existingBatches[d.batchId]) return;
       var dt = d.createdAt || d.endedAtClient || new Date().toISOString();
+      var tKey = new Date(dt).getTime() + "_" + (d.studentId || '');
+      
+      if (d.batchId && existingBatches[d.batchId]) return;
+      if (existingBatches[tKey]) return; // prevent duplicate if batchId column is missing
+      
       newScores.push([
-        dt, d.studentId || '', d.name || '', d.topic || '', d.mode || '', d.attempt || 1, d.score || 0, d.correctCount || 0, d.wrongCount || 0, d.duration || 0, d.settingsVersion || '', d.questionBankVersion || '', d.batchId
+        dt, d.studentId || '', d.name || '', d.topic || '', d.mode || '', d.attempt || 1, d.score || 0, d.correctCount || 0, d.wrongCount || 0, d.duration || 0, d.settingsVersion || '', d.questionBankVersion || '', d.batchId || ''
       ]);
-      if (d.details && Array.isArray(d.details)) {
-        d.details.forEach(function(det) {
-          newDetails.push([
-            dt, d.studentId || '', d.name || '', d.topic || '', d.mode || '', d.batchId,
-            det.questionId || '', det.questionType || '', det.cogType || '', det.source || '',
-            det.isCorrect ? '答對' : '答錯', det.selectedText || '', det.correctText || '', det.answerSec || 0
-          ]);
-        });
-      }
-      existingBatches[d.batchId] = true;
+      
+      if (d.batchId) existingBatches[d.batchId] = true;
+      existingBatches[tKey] = true;
       newCount++;
     });
     
-    if (newScores.length > 0) scoreSheet.getRange(scoreSheet.getLastRow() + 1, 1, newScores.length, newScores[0].length).setValues(newScores);
-    if (newDetails.length > 0) detailSheet.getRange(detailSheet.getLastRow() + 1, 1, newDetails.length, newDetails[0].length).setValues(newDetails);
+    if (newScores.length > 0) {
+      scoreSheet.getRange(scoreSheet.getLastRow() + 1, 1, newScores.length, newScores[0].length).setValues(newScores);
+    }
     
-    return jsonResponse({ status: 'ok', message: '同步完成，共新增 ' + newCount + ' 筆測驗紀錄。', newCount: newCount });
+    return jsonResponse({ status: 'ok', message: '同步完成，共新增 ' + newCount + ' 筆測驗紀錄。（為節省系統空間，不再備份作答明細至試算表）', newCount: newCount });
   } catch (err) {
     return jsonResponse({ status: 'error', message: err.message });
   }
