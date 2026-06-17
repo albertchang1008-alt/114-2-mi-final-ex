@@ -459,6 +459,7 @@
       var wrongQuestionsMap = {};
       
       // 2. 去舊家找 (wrongQuestions collection)，以兼容資料庫優化前的舊錯題
+      var oldError = null;
       try {
         var oldQuery = db.collection(c.wrongQuestions || "wrongQuestions")
           .where("email", "==", email)
@@ -492,6 +493,7 @@
         });
       } catch (e) {
         console.warn("無法讀取舊錯題庫 (wrongQuestions)，可能是權限尚未開放或規則未部署:", e);
+        oldError = e.message || String(e);
       }
 
       snap.forEach(function(doc) {
@@ -531,7 +533,7 @@
           }
         });
       });
-      return { status: "ok", questions: Object.values(wrongQuestionsMap), _debugDocs: snap.size };
+      return { status: "ok", questions: Object.values(wrongQuestionsMap), _debugDocs: snap.size, _oldError: oldError };
     } catch (err) {
       console.warn("getMyWrongQuestions error:", err);
       return { status: "error", message: String(err) };

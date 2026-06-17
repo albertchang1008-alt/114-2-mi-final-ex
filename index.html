@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617h"></script>
-    <script src="firebase-v18.js?v=20260617h"></script>
+    <script src="firebase-config.js?v=20260617i"></script>
+    <script src="firebase-v18.js?v=20260617i"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -2393,13 +2393,14 @@ async function loadWrongFcCount() {
 
         const label = val === "0" ? "全部時間" : getFcTimeLabel(val);
         const docsScanned = res._debugDocs || 0;
+        const oldErrNote = res._oldError ? `<br><span class="text-xs text-amber-600 font-normal">⚠️ 舊錯題庫加載失敗：${res._oldError}</span>` : "";
         if (wfcQuestions.length > 0) {
             const limitNote = maxCount > 0 && qMap.size > maxCount ? `（共 ${qMap.size} 題，已限制為 ${maxCount} 題）` : "";
-            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>`;
+            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}`;
             countEl.className   = "text-rose-600 text-sm font-semibold";
             startBtn.disabled   = false;
         } else {
-            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>`;
+            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}`;
             countEl.className   = "text-green-600 text-sm font-semibold";
             startBtn.disabled   = true;
         }
