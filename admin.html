@@ -842,40 +842,42 @@
                     <p class="text-gray-400 text-center py-8">點「載入報告」開始分析</p>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
+            </div>
 
-<!-- ★ 新增：學生履歷 Tab -->
-<div id="tab-profile" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-    <h2 class="text-lg font-bold text-gray-800 mb-4">🧑‍🎓 學生履歷查詢</h2>
-    <div class="flex flex-wrap gap-3 mb-6 items-center">
-        <select id="profile-class-select" onchange="onProfileClassChange()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto min-w-[120px]">
-            <option value="">選擇班級...</option>
-        </select>
-        <select id="profile-sid-select" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto flex-1 disabled:bg-gray-100 disabled:text-gray-400" disabled>
-            <option value="">先選班級，再選學生...</option>
-        </select>
-        <button onclick="loadStudentProfile()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2 rounded-lg transition w-full md:w-auto">🔍 查詢</button>
-    </div>
-    
-    <div id="profile-loading" class="hidden text-center py-10">
-        <div class="loader mx-auto mb-3" style="border-top-color:#0ea5e9;"></div>
-        <p class="text-sm text-gray-500">正在撈取連線與作答紀錄...</p>
-    </div>
-    
-    <div id="profile-content" class="hidden">
-        <!-- 基本資料 -->
-        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 flex flex-wrap gap-4 text-sm">
-            <div class="w-full md:w-auto"><span class="text-gray-500">學號：</span><span id="prof-sid" class="font-bold text-gray-800"></span></div>
-            <div class="w-full md:w-auto"><span class="text-gray-500">姓名：</span><span id="prof-name" class="font-bold text-gray-800"></span></div>
-            <div class="w-full md:w-auto"><span class="text-gray-500">班級：</span><span id="prof-class" class="font-bold text-gray-800"></span></div>
-            <div class="w-full md:w-auto"><span class="text-gray-500">首次登入：</span><span id="prof-first" class="text-gray-700"></span></div>
-            <div class="w-full md:w-auto"><span class="text-gray-500">最近連線：</span><span id="prof-last" class="font-bold text-green-600"></span></div>
+            <!-- ★ 新增：學生履歷 Tab -->
+            <div id="tab-profile" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">🧑‍🎓 學生履歷查詢</h2>
+                <div class="flex flex-wrap gap-3 mb-6 items-center">
+                    <select id="profile-class-select" onchange="onProfileClassChange()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto min-w-[120px]">
+                        <option value="">選擇班級...</option>
+                    </select>
+                    <select id="profile-sid-select" class="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none w-full md:w-auto flex-1 disabled:bg-gray-100 disabled:text-gray-400" disabled>
+                        <option value="">先選班級，再選學生...</option>
+                    </select>
+                    <button onclick="loadStudentProfile()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2 rounded-lg transition w-full md:w-auto">🔍 查詢</button>
+                </div>
+                
+                <div id="profile-loading" class="hidden text-center py-10">
+                    <div class="loader mx-auto mb-3" style="border-top-color:#0ea5e9;"></div>
+                    <p class="text-sm text-gray-500">正在撈取連線與作答紀錄...</p>
+                </div>
+                
+                <div id="profile-content" class="hidden">
+                    <!-- 基本資料 -->
+                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 flex flex-wrap gap-4 text-sm">
+                        <div class="w-full md:w-auto"><span class="text-gray-500">學號：</span><span id="prof-sid" class="font-bold text-gray-800"></span></div>
+                        <div class="w-full md:w-auto"><span class="text-gray-500">姓名：</span><span id="prof-name" class="font-bold text-gray-800"></span></div>
+                        <div class="w-full md:w-auto"><span class="text-gray-500">班級：</span><span id="prof-class" class="font-bold text-gray-800"></span></div>
+                        <div class="w-full md:w-auto"><span class="text-gray-500">首次登入：</span><span id="prof-first" class="text-gray-700"></span></div>
+                        <div class="w-full md:w-auto"><span class="text-gray-500">最近連線：</span><span id="prof-last" class="font-bold text-green-600"></span></div>
+                    </div>
+                    
+                    <h3 class="font-bold text-gray-700 mb-3 border-b pb-2">📋 歷次交卷紀錄</h3>
+                    <div id="profile-batches" class="space-y-3"></div>
+                </div>
+            </div>
+
         </div>
-        
-        <h3 class="font-bold text-gray-700 mb-3 border-b pb-2">📋 歷次交卷紀錄</h3>
-        <div id="profile-batches" class="space-y-3"></div>
     </div>
 </div>
 
