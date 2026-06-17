@@ -1424,7 +1424,7 @@ function handleSaveSettings(payload) {
 }
 
 // ─────────────────────────────────────────────
-// Action：getMyWrongQuestions（使用 WrongIndex）
+// Action：getMyWrongQuestions（使用 Firebase answerBatches 裡的 details）
 // ─────────────────────────────────────────────
 function handleGetMyWrongQuestions(payload) {
   var studentId = payload.studentId;
@@ -1434,29 +1434,30 @@ function handleGetMyWrongQuestions(payload) {
 
   var cutoff = (hours && hours > 0) ? new Date(new Date().getTime() - hours * 60 * 60 * 1000) : null;
 
-  var wiSheet = ss.getSheetByName(SHEET_WRONG_IDX);
-  if (!wiSheet || wiSheet.getLastRow() <= 1) {
-    rebuildWrongIndex();
-    wiSheet = ss.getSheetByName(SHEET_WRONG_IDX);
-    if (!wiSheet || wiSheet.getLastRow() <= 1) return jsonResponse({ status: "ok", questions: [] });
-  }
-
-  var rows = wiSheet.getDataRange().getValues();
   var wrongQids = [];
-  for (var i = 1; i < rows.length; i++) {
-    var sid    = rows[i][0] ? rows[i][0].toString() : "";
-    var qid    = rows[i][1] ? rows[i][1].toString() : "";
-    var qtopic = rows[i][2] ? rows[i][2].toString() : "";
-    var result = rows[i][3] ? rows[i][3].toString() : "";
-    var ts     = rows[i][4];
-    if (sid !== studentId) continue;
-    if (result !== "答錯") continue;
-    if (topic !== "綜合練習" && qtopic !== topic) continue;
-    if (cutoff && ts) {
-      var rowDate = ts instanceof Date ? ts : new Date(ts);
-      if (!isNaN(rowDate) && rowDate < cutoff) continue;
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (projectId) {
+    try {
+      var token = firebaseAccessTokenFromServiceAccount();
+      var docs = firebaseFetchDocumentsByQuery(projectId, token, "answerBatches", "studentId", "EQUAL", studentId.toString());
+      docs.forEach(function(doc) {
+        if (doc.mode === "錯題重做") return;
+        if (topic !== "綜合練習" && doc.topic !== topic) return;
+        var createdAt = new Date(doc.createdAt || doc.endedAtClient || 0);
+        if (cutoff && createdAt < cutoff) return;
+        
+        if (doc.details && Array.isArray(doc.details)) {
+          doc.details.forEach(function(detail) {
+            if (!detail.isCorrect && detail.questionId) {
+              wrongQids.push(detail.questionId);
+            }
+          });
+        }
+      });
+    } catch(e) {
+      Logger.log("getMyWrongQuestions 抓取失敗: " + e.message);
     }
-    wrongQids.push(qid);
   }
 
   if (!wrongQids.length) return jsonResponse({ status: "ok", questions: [] });
@@ -3355,6 +3356,36 @@ function firebaseFetchAllDocuments(projectId, token, collectionName) {
   return allDocs;
 }
 
+function firebaseFetchDocumentsByQuery(projectId, token, collectionName, field, op, value) {
+  var url = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents:runQuery';
+  var payload = {
+    structuredQuery: {
+      from: [{ collectionId: collectionName }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: field },
+          op: op,
+          value: { stringValue: value }
+        }
+      }
+    }
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + token },
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) throw new Error('Firestore 查詢失敗：' + res.getContentText());
+  var raw = JSON.parse(res.getContentText());
+  var docs = [];
+  raw.forEach(function(r) {
+    if (r.document) docs.push(parseFirestoreDoc(r.document));
+  });
+  return docs;
+}
+
 function parseFirestoreValue(v) {
   if (!v) return null;
   if ('stringValue' in v) return v.stringValue;
@@ -3486,29 +3517,25 @@ function handleGetStudentProfile(payload) {
     }
   }
   
-  // 2. 抓取作答歷史清單 (不含明細)
+  // 2. 抓取作答歷史清單 (改從 Firebase 即時抓取)
   var batches = [];
-  var scoreSheet = ss.getSheetByName(SHEET_SCORES);
-  if (scoreSheet && scoreSheet.getLastRow() > 1) {
-    var scRows = scoreSheet.getDataRange().getValues();
-    var headers = scRows[0].map(function(h) { return h.toString().trim(); });
-    var cTime = findColIdx(headers, ["交卷時間","時間"]);
-    var cSid = findColIdx(headers, ["學號"]);
-    var cTopic = findColIdx(headers, ["分類"]);
-    var cScore = findColIdx(headers, ["總分","成績"]);
-    var cDur = findColIdx(headers, ["作答秒數","秒數"]);
-    var cBid = findColIdx(headers, ["批次ID","batchId","批次"]);
-    
-    for (var j = 1; j < scRows.length; j++) {
-      if (cSid !== -1 && scRows[j][cSid] && scRows[j][cSid].toString() === sid.toString()) {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (projectId) {
+    try {
+      var token = firebaseAccessTokenFromServiceAccount();
+      var docs = firebaseFetchDocumentsByQuery(projectId, token, "answerBatches", "studentId", "EQUAL", sid.toString());
+      docs.forEach(function(d) {
         batches.push({
-          timestamp: cTime !== -1 ? scRows[j][cTime] : "",
-          topic: cTopic !== -1 ? scRows[j][cTopic] : "",
-          score: cScore !== -1 ? scRows[j][cScore] : 0,
-          duration: cDur !== -1 ? scRows[j][cDur] : 0,
-          batchId: cBid !== -1 ? scRows[j][cBid] : ""
+          timestamp: d.createdAt || d.endedAtClient || "",
+          topic: d.topic || "",
+          score: d.score || 0,
+          duration: d.duration || 0,
+          batchId: d.batchId || ""
         });
-      }
+      });
+    } catch(err) {
+      Logger.log("getStudentProfile: Firebase 抓取失敗: " + err.message);
     }
   }
   
