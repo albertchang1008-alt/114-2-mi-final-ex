@@ -59,6 +59,18 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    match /studentProgress/{docId} {
+      allow create, update: if signedIn() && inWhitelist() && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && inWhitelist() && resource.data.email == request.auth.token.email;
+      allow delete: if false;
+    }
+
+    match /wrongQuestions/{docId} {
+      allow create, update: if signedIn() && inWhitelist() && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && inWhitelist() && resource.data.email == request.auth.token.email;
+      allow delete: if false;
+    }
+
     match /questionStats/{questionId} {
       allow read: if signedIn();
       allow create, update: if signedIn();

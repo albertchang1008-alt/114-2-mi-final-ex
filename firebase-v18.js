@@ -455,6 +455,42 @@
       var snap = await query.get();
       var wrongQuestionsMap = {};
       
+      // 2. 去舊家找 (wrongQuestions collection)，以兼容資料庫優化前的舊錯題
+      try {
+        var oldQuery = db.collection(c.wrongQuestions || "wrongQuestions")
+          .where("email", "==", email)
+          .where("resolved", "==", false);
+        var oldSnap = await oldQuery.get();
+        
+        oldSnap.forEach(function(doc) {
+          var d = doc.data();
+          
+          var docTime = d.updatedAt || d.createdAt;
+          var docMs = 0;
+          if (docTime && typeof docTime.toDate === 'function') {
+            docMs = docTime.toDate().getTime();
+          } else if (docTime) {
+            docMs = new Date(docTime).getTime();
+          }
+          if (hours && hours > 0 && docMs < cutoff.getTime()) return;
+
+          if (!wrongQuestionsMap[d.questionId]) {
+            wrongQuestionsMap[d.questionId] = {
+              id: d.questionId,
+              q: d.questionText,
+              top: d.topic,
+              type: d.questionType,
+              cog: d.cogType,
+              wrongSelectedText: d.selectedText,
+              correctText: d.correctText,
+              time: docTime
+            };
+          }
+        });
+      } catch (e) {
+        console.warn("無法讀取舊錯題庫 (wrongQuestions)，可能是權限尚未開放或規則未部署:", e);
+      }
+
       snap.forEach(function(doc) {
         var data = doc.data();
         
