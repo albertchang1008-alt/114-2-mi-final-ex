@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617e"></script>
-    <script src="firebase-v18.js?v=20260617e"></script>
+    <script src="firebase-config.js?v=20260617g"></script>
+    <script src="firebase-v18.js?v=20260617g"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -867,6 +867,7 @@ async function fetchQuestionBank() {
 
         // ★ 只儲存分類清單，題目內容待進入分類後再載入
         topicsData = result.topics || [];
+        window.firebaseQuestionsDb = result.questions || [];
 
         // ★ 儲存完成度設定供入口頁排行使用
         completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
@@ -2321,6 +2322,24 @@ async function loadWrongFcCount() {
     wfcQuestions = [];
 
     try {
+        // ── Debug：顯示 Firebase 帳號與手機佇列狀態 ──
+        const fbEmail = window.FirebaseV18?.currentUserEmail?.() || "(未登入 Firebase)";
+        const queueRaw = localStorage.getItem("quiz_v181_pending_attempts") || "[]";
+        const queueItems = (() => { try { return JSON.parse(queueRaw); } catch(_) { return []; } })();
+        const queueSize = queueItems.length;
+        countEl.innerHTML = `查詢中... <span class="text-xs text-gray-400">(帳號: ${fbEmail} | 手機佇列: ${queueSize} 份)</span>`;
+
+        // 如果佇列有資料，先補送再查
+        if (queueSize > 0) {
+            try {
+                const flushRes = await window.FirebaseV18.flushQueue();
+                if (flushRes && flushRes.flushed > 0) {
+                    countEl.innerHTML = `已補送 ${flushRes.flushed} 份暫存考卷，重新查詢中...`;
+                    await new Promise(r => setTimeout(r, 1500)); // 等 Firestore 寫入
+                }
+            } catch(_) {}
+        }
+
         // 一次抓取該時間內的所有錯題，然後在前端過濾
         const res = await window.FirebaseV18.getMyWrongQuestions(hours);
         const qMap = new Map();
@@ -2333,8 +2352,11 @@ async function loadWrongFcCount() {
                 const qTopStr = String(q.top || "").trim();
                 if (topics.includes(qTopStr) || topics.includes("綜合練習") || topics.length === 0) {
                     if (!qMap.has(q.id)) {
-                        // ★ 前端補齊法：從手機暫存的題庫 (topicsData 或 allQuestionsData) 中抓取完整題目資料
-                        let fullQ = window.allQuestionsData ? window.allQuestionsData.find(aq => aq.id === q.id) : null;
+                        // ★ 前端補齊法：優先從 Firebase 完整題庫 (window.firebaseQuestionsDb) 中抓取完整題目資料
+                        let fullQ = window.firebaseQuestionsDb ? window.firebaseQuestionsDb.find(aq => aq.id === q.id) : null;
+                        if (!fullQ && window.allQuestionsData) {
+                            fullQ = window.allQuestionsData.find(aq => aq.id === q.id);
+                        }
                         if (!fullQ && window.topicsData) {
                             for (let t of window.topicsData) {
                                 const found = (t.questions || []).find(x => x.id === q.id);
