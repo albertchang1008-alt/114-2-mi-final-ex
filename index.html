@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617i"></script>
-    <script src="firebase-v18.js?v=20260617i"></script>
+    <script src="firebase-config.js?v=20260617j"></script>
+    <script src="firebase-v18.js?v=20260617j"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -2340,6 +2340,20 @@ async function loadWrongFcCount() {
             } catch(_) {}
         }
 
+        // ── Debug：白名單真實存在性檢查 ──
+        let whitelistErrorNote = "";
+        try {
+            const email = window.FirebaseV18.currentUserEmail();
+            if (email && window.firebase) {
+                const docSnap = await window.firebase.firestore().collection("studentsWhitelist").doc(email).get();
+                if (!docSnap.exists) {
+                    whitelistErrorNote = `<br><span class="text-xs text-amber-600 font-normal">⚠️ 白名單警告：您的 Email (${email}) 不在學生白名單 (studentsWhitelist) 中。若是教師/管理員，請確認已部署最新的 Firebase 安全規則以獲得放行。</span>`;
+                }
+            }
+        } catch (we) {
+            console.warn("白名單檢查失敗：", we);
+        }
+
         // 一次抓取該時間內的所有錯題，然後在前端過濾
         const res = await window.FirebaseV18.getMyWrongQuestions(hours);
         const qMap = new Map();
@@ -2396,11 +2410,11 @@ async function loadWrongFcCount() {
         const oldErrNote = res._oldError ? `<br><span class="text-xs text-amber-600 font-normal">⚠️ 舊錯題庫加載失敗：${res._oldError}</span>` : "";
         if (wfcQuestions.length > 0) {
             const limitNote = maxCount > 0 && qMap.size > maxCount ? `（共 ${qMap.size} 題，已限制為 ${maxCount} 題）` : "";
-            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}`;
+            countEl.innerHTML = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}${whitelistErrorNote}`;
             countEl.className   = "text-rose-600 text-sm font-semibold";
             startBtn.disabled   = false;
         } else {
-            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}`;
+            countEl.innerHTML = `${label}內無錯題 🎉<br><span class="text-xs text-gray-400 font-normal">（Firebase 掃描了 ${docsScanned} 份考卷，共找到 ${rawCount} 題）</span>${oldErrNote}${whitelistErrorNote}`;
             countEl.className   = "text-green-600 text-sm font-semibold";
             startBtn.disabled   = true;
         }

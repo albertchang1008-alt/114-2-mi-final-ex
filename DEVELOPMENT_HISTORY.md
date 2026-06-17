@@ -8,7 +8,17 @@
 
 ### 【2026-06-17】
 
-#### 🛠️ 1. 暴露舊錯題庫加載錯誤訊息至前端
+#### 🛠️ 1. 調整教師安全規則放行與白名單自動檢測
+* **版本號/Commit**: `6b856dc`
+* **異動檔案**: 
+  * [index.html](index.html) (版本號升級至 `?v=20260617j`)
+  * [firestore.rules](firestore.rules)
+* **變更目的**: 解決教師/管理員帳號 (`hhchang@ctcn.edu.tw`) 因為沒有寫在學生的 Sheet 名冊中，在同步時沒有被寫入 Firebase `studentsWhitelist` 白名單而被 Security Rules 擋下的問題。
+* **主要變動**:
+  * **安全規則放行特例**: 修改 `firestore.rules` 裡的 `inWhitelist()` 函式，除了檢查白名單集合外，特例放行 `hhchang@ctcn.edu.tw`，使其擁有等同白名單學生的 Firestore 讀寫權限。
+  * **前端白名單自動檢測**: 在 `index.html` 裡的 `loadWrongFcCount` 中，實作非同步的白名單存在性檢驗，若目前登入的 Email 不在白名單中，會在畫面上印出黃色警告字眼以協助即時診斷。
+
+#### 🛠️ 2. 暴露舊錯題庫加載錯誤訊息至前端
 * **版本號/Commit**: `ef32acb`
 * **異動檔案**: 
   * [index.html](index.html) (版本號升級至 `?v=20260617i`)

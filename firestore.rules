@@ -6,7 +6,8 @@ service cloud.firestore {
     }
 
     function inWhitelist() {
-      return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email.lower()));
+      return exists(/databases/$(database)/documents/studentsWhitelist/$(request.auth.token.email.lower()))
+             || request.auth.token.email.lower() == "hhchang@ctcn.edu.tw";
     }
 
     match /studentsWhitelist/{email} {
