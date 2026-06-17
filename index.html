@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617d"></script>
-    <script src="firebase-v18.js?v=20260617d"></script>
+    <script src="firebase-config.js?v=20260617e"></script>
+    <script src="firebase-v18.js?v=20260617e"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -1108,11 +1108,22 @@ async function handleGoogleCallback(response) {
         }
         setLoginBusy("帳號驗證中，請稍候...");
         // 將 One Tap 取得的 JWT Token 登入到 Firebase Auth
+        let firebaseAuthOk = false;
         if (window.FirebaseV18 && typeof window.FirebaseV18.signInWithToken === 'function') {
             try {
                 await window.FirebaseV18.signInWithToken(response.credential);
+                firebaseAuthOk = true;
             } catch (fbErr) {
-                console.warn("Firebase credential sign-in failed:", fbErr);
+                console.warn("Firebase One Tap credential sign-in failed, will try popup:", fbErr);
+            }
+        }
+        // 如果 One Tap 的 Token 登入失敗，改走 Firebase 彈出視窗登入
+        if (!firebaseAuthOk) {
+            try {
+                await window.FirebaseV18.signInWithGoogle();
+                firebaseAuthOk = true;
+            } catch (popErr) {
+                console.warn("Firebase popup sign-in also failed:", popErr);
             }
         }
         const res = await window.FirebaseV18.findStudentByEmail(email);
@@ -1180,6 +1191,10 @@ async function completeLogin(idVal, nameVal, emailVal, classVal) {
         throw new Error("登入驗證失敗，請重新嘗試");
     }
     window.FirebaseV18.recordLogin(studentId, studentName, studentEmail).catch(() => {});
+    // ★ 登入後立刻把手機裡暫存的考卷補送到 Firebase
+    window.FirebaseV18.flushQueue().then(r => {
+        if (r && r.flushed > 0) console.log('[補送] 成功補送', r.flushed, '份暫存考卷');
+    }).catch(() => {});
     isLoggedIn = true;
     clearLoginBusy();
     document.getElementById("display-user-name").textContent = studentName;
