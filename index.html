@@ -2303,7 +2303,28 @@ async function loadWrongFcCount() {
                 // 將 q.top 轉成字串，避免 Firebase 中是不小心存成數字型別導致 includes 比對失敗
                 const qTopStr = String(q.top || "").trim();
                 if (topics.includes(qTopStr) || topics.includes("綜合練習") || topics.length === 0) {
-                    if (!qMap.has(q.id)) qMap.set(q.id, q);
+                    if (!qMap.has(q.id)) {
+                        // ★ 前端補齊法：從手機暫存的題庫 (topicsData 或 allQuestionsData) 中抓取完整題目資料
+                        let fullQ = window.allQuestionsData ? window.allQuestionsData.find(aq => aq.id === q.id) : null;
+                        if (!fullQ && window.topicsData) {
+                            for (let t of window.topicsData) {
+                                const found = (t.questions || []).find(x => x.id === q.id);
+                                if (found) { fullQ = found; break; }
+                            }
+                        }
+                        
+                        if (fullQ) {
+                            // 複製一份完整題目，並塞入 Firebase 記錄的錯誤資訊
+                            let mergedQ = Object.assign({}, fullQ);
+                            mergedQ.wrongSelectedText = q.wrongSelectedText;
+                            mergedQ.correctText = q.correctText;
+                            mergedQ.time = q.time;
+                            qMap.set(q.id, mergedQ);
+                        } else {
+                            // 如果真的找不到，就先放原本的殘缺資料，以免報錯
+                            qMap.set(q.id, q);
+                        }
+                    }
                 }
             });
         } else {
