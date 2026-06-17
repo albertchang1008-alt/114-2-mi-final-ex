@@ -1,6 +1,6 @@
-# 114-2 微免期末考系統：詳細開發歷程與變更記錄 (6/14 ～ 6/17)
+# 114-2 微免期末考系統：詳細開發歷程與變更記錄 (6/3 ～ 6/17)
 
-本文件詳細記錄了本系統在 2026/06/14 至 2026/06/17 期間，為了因應「Google Sheet 格數爆滿危機」而進行的 **Firebase 大架構轉移**、**白名單安全登入**、以及**錯題閃卡與後台優化**的詳細開發歷程。後續若有任何開發變更，將在此文件中增量記錄。
+本文件詳細記錄了本系統自專案創立（2026/06/03）開始，直至期末考大功告成（2026/06/17）期間，經歷的 **前端測驗建立**、**Firebase 大架構轉移**、**白名單安全登入**、以及**所有 bug 修正**的完整開發歷程。後續若有任何開發變更，將在此文件中增量記錄。
 
 ---
 
@@ -22,7 +22,7 @@
 
 #### 🛠️ 3. 調整教師安全規則放行與白名單自動檢測
 * **Commit**: `2c890d0`
-* **異動檔案**: [firestore.rules](firestore.rules), [index.html]((index.html))
+* **異動檔案**: [firestore.rules](firestore.rules), [index.html](index.html)
 * **變更目的**: 解決教師/管理員帳號 (`hhchang@ctcn.edu.tw`) 因為沒有寫在學生的 Sheet 名冊中，在同步時沒有被寫入 Firebase `studentsWhitelist` 白名單而被 Security Rules 擋下的問題。
 * **變更內容**: 
   * **安全規則放行特例**: 修改 `firestore.rules` 裡的 `inWhitelist()` 函式，除了檢查白名單集合外，特例放行 `hhchang@ctcn.edu.tw`，使其擁有等同白名單學生的 Firestore 讀寫權限。
@@ -181,7 +181,7 @@
 #### 🛠️ 5. 後台管理介面整合 Looker Studio 儀表板
 * **Commit**: `0539db7`
 * **異動檔案**: [admin.html](admin.html)
-* **變更目的**: 提供教師無感、直接的圖表數據 analysis 體驗。
+* **變更目的**: 提供教師無感、直接的圖表數據分析體驗。
 * **變更內容**: 以 iframe 原生方式直接將 Looker Studio 儀表板整合在教師後台頁面中。
 
 #### 🔒 6. 實作 Firebase Whitelist (白名單安全防護)
@@ -310,8 +310,72 @@
 * **變更目的**: **高速公路行駛中換輪胎的大型架構升級。** 解決 Google Sheet 容量即將爆滿千萬格上限的重大危機，將所有作答記錄上傳至 Firebase 雲端。
 * **變更內容**:
   * **寫入整併**: 將原本分開的作答明細，改以內嵌在 `answerBatches` document 的 Map Array 中打包上傳，極致節省寫入量。
-  * **Firebase SDK 引入**: 於前端 `index.html` 引入 Firebase app, auth, firestore compat SDK，並編寫 `firebase-v18.js` 通訊的核心邏輯。
+  * **Firebase SDK 引入**: 於前端 `index.html` 引入 Firebase app, auth, firestore compat SDK，並編寫 `firebase-v18.js` 核心通訊邏輯。
   * 部署最初版 `firestore.rules` 規則。
+
+---
+
+### 【2026-06-03 至 2026-06-13】（專案早期開發階段）
+
+#### 🛠️ 1. 修正選項索引查詢 bug 與 Firestore session 登入優化
+* **Commit**: `216ef68` (6/13)
+* **異動檔案**: [firebase-v18.js](firebase-v18.js), [index.html](index.html)
+* **變更目的**: 解決學生在作答時，因為 `findCorrectOptionIndex` 抓取選項對應索引不正確導致判定分數出錯的 Bug，並引入初步的 Firestore session 登入比對防止多重瀏覽器登入。
+
+#### 🛠️ 2. 修正綜合練習重做路徑與前端成績展示
+* **Commit**: `f3b498b` (6/12)
+* **異動檔案**: [index.html](index.html)
+* **變更內容**: 修復綜合練習測驗結束後點擊「重新練習」時無法載入正確題目路徑的 Bug。
+
+#### 🛠️ 3. 實作後台在背景靜默載入大題庫數據
+* **Commit**: `3f74509` (6/11)
+* **異動檔案**: [index.html](index.html)
+* **變更目的**: 解決題目總量過大時，一進入網頁會產生嚴重卡頓的問題。改在登入時由背景非同步靜默下載題庫。
+
+#### 🛠️ 4. 錯題打撈：完成讀寫量優化最初版 (v1.81)
+* **Commit**: `1b64bb0` (6/11)
+* **異動檔案**: [firebase-v18.js](firebase-v18.js), [index.html](index.html)
+* **變更目的**: 為避免大量寫入，初步調整寫入邏輯，減少重複的學生數據更新。
+
+#### 🛠️ 5. 更新快取破壞字串以修復學生成績
+* **Commit**: `e1976e1` (6/10)
+* **異動檔案**: [index.html](index.html)
+
+#### 🛠️ 6. 修正選項渲染中的「你選」文字疊加錯誤
+* **Commit**: `84ef084` (6/10)
+* **異動檔案**: [index.html](index.html)
+* **變更內容**: 排除在重做題目或閃卡切換時，選項按鈕重疊印出「你選：(A)」字樣的顯示 Bug。
+
+#### 🛠️ 7. 錯題閃卡功能初版發布
+* **Commit**: `3c8838f` (6/10)
+* **異動檔案**: [index.html](index.html) (版本號升級至 `v1.81`)
+* **變更內容**: 正式推出「錯題閃卡」功能模組，允許學生針對 Firebase 上的錯題進行過濾與練習。
+
+#### 🚀 8. 初次引入 Firebase 功能
+* **Commit**: `93fee7b` (6/9)
+* **異動檔案**: [index.html](index.html)
+* **變更目的**: 在原有的 GAS 架構下，嘗試性引入 Firebase 進行交卷明細的備份寫入。當時的安全規則仍為 default 限制。
+
+#### 🛠️ 9. 測驗系統 UI/UX 大幅度迭代與倒計時優化
+* **Commit**: `525350d` ~ `33a9a0d` (6/8)
+* **異動檔案**: [index.html](index.html) (版本號自 `v1.5` 遞增至 `v1.71`)
+* **變更內容**: 
+  * 引入校區獨立交卷截止時間倒計時（新店校區、宜蘭校區）。
+  * 加上學生交卷前的二次防呆確認。
+  * 調整測驗結束後的統計報表樣式（綠色/紅色答題卡）。
+  * 優化手機小螢幕排版（響應式 grid）。
+
+#### 🛠️ 10. 新增不支援之舊版瀏覽器阻擋與引導
+* **Commit**: `5369989` (6/3)
+* **異動檔案**: [index.html](index.html)
+* **變更目的**: 部分學生使用老舊的手機瀏覽器或 Line 內嵌瀏覽器，會因為不支持現代 JS 語意而閃退。
+* **變更內容**: 於網頁頭部加入 User-Agent 偵測，若是不相容的舊型瀏覽器，則彈出強烈警告並引導學生使用 Chrome/Safari 打開。
+
+#### 🚀 11. 初始專案版本發布 (V1 ~ V4)
+* **Commit**: `0c5cd93` (6/3), `bdcfb55`, `106c3a2`, `20f9946`
+* **異動檔案**: [index.html](index.html)
+* **變更目的**: **專案成立。** 建立基礎的「微免期末考題庫測驗」前端網頁。
+* **變更內容**: 實作從 Google Apps Script 載入題目（單選題）、記錄答題對錯、並在手機端完成判分的基本答題系統。
 
 ---
 
@@ -331,7 +395,7 @@ graph TD
 ### 1. 寫入量極致優化（內嵌 Details 設計）
 * **舊設計**: 學生交一張考卷，會寫入 1 筆 `answerBatches`，並對考卷內每一題寫入 1 筆 `answerDetails`（若 30 題就是 31 次寫入），資料庫開銷極大。
 * **新設計**: 將作答明細轉為 JSON 陣列，直接作為 `details` 欄位寫入 `answerBatches` 本身，**一次交卷僅需 1 次寫入**。
-* **前端拼圖法**: 為了省空間，Firebase 上的明細不存題目選項與解析。前端載入時，直接透過全庫變數 `window.firebaseQuestionsDb` 的 `id`對照表，將選項與解析瞬間「拼裝」回畫面上。
+* **前端拼圖法**: 為了省空間，Firebase 上的明細不存題目選項與解析。前端載入時，直接透過全庫變數 `window.firebaseQuestionsDb` 的 `id` 對照表，將選項與解析瞬間「拼裝」回畫面上。
 
 ### 2. 兩階段安全驗證與 Fail-Open 機制
 * **第一階段**：Google 登入取得的 Email 必須存在於 Firestore 的 `studentsWhitelist` 集合中（由老師在 Sheet 管理，並同步至 Firebase）。
