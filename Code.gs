@@ -3390,8 +3390,10 @@ function handleSyncFirebaseToSheet(payload) {
     var docs = rawDocs.map(parseFirestoreDoc);
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var scoreSheet = getOrCreateScoreSheet(ss);
-    var detailSheet = getOrCreateDetailSheet(ss);
+    var scoreSheet = ss.getSheetByName(SHEET_SCORES);
+    var detailSheet = ss.getSheetByName(SHEET_DETAILS);
+    if (!scoreSheet) throw new Error("找不到分頁：" + SHEET_SCORES);
+    if (!detailSheet) throw new Error("找不到分頁：" + SHEET_DETAILS);
     
     var existingBatches = {};
     if (scoreSheet.getLastRow() > 1) {
