@@ -1,8 +1,9 @@
 // ╔══════════════════════════════════════════════════════════════╗
-// ║      Google Apps Script — 題庫系統  v10-716                  ║
+// ║      Google Apps Script — 題庫系統  v10-717                  ║
 // ║      對應前端版本：quiz v1.8 (已優化讀寫)                    ║
 // ║                                                              ║
 // ║  更新紀錄：                                                   ║
+// ║  v10-717 - 徹底移除對作答明細分頁的依賴，允許刪除明細表
 // ║  v10-716 - 解決 10M 儲存格上限：syncFirebaseToSheet 不再備份作答明細，並修復 batchId 重複問題
 // ║  v10-714 - 題數入口、不重複抽題、作答批次、學生進度增量快取
 // ║  v10-713 - 明細表每 20000 筆輪替；學生端改讀快取；新增快取狀態表
@@ -3391,9 +3392,7 @@ function handleSyncFirebaseToSheet(payload) {
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var scoreSheet = ss.getSheetByName(SHEET_SCORES);
-    var detailSheet = ss.getSheetByName(SHEET_DETAILS);
     if (!scoreSheet) throw new Error("找不到分頁：" + SHEET_SCORES);
-    if (!detailSheet) throw new Error("找不到分頁：" + SHEET_DETAILS);
     
     var existingBatches = {};
     var bCol = -1;
