@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260617b"></script>
-    <script src="firebase-v18.js?v=20260617b"></script>
+    <script src="firebase-config.js?v=20260617c"></script>
+    <script src="firebase-v18.js?v=20260617c"></script>
     <style>
         :root{
             --warm-bg:#F4F1EA; --warm-card:#FDFAF4; --warm-border:rgba(0,0,0,0.08);
@@ -1056,7 +1056,7 @@ function setLoginBusy(message) {
         if (errEl && !isLoggedIn) errEl.textContent = "系統正在連線，請不要關閉頁面...";
     }, 5000);
     loginTimerB = setTimeout(() => {
-        if (errEl && !isLoggedIn) errEl.textContent = "Google Apps Script 回應較慢，仍在嘗試登入...";
+        if (errEl && !isLoggedIn) errEl.textContent = "驗證時間較長，請確認是否已在彈出視窗選擇帳號...";
     }, 12000);
 }
 
@@ -1107,10 +1107,24 @@ async function handleGoogleCallback(response) {
             return;
         }
         setLoginBusy("帳號驗證中，請稍候...");
-        const res = await postGAS({ action: "getStudentProfile", email });
-        if (res.status !== "ok") throw new Error(res.message || "帳號驗證失敗");
+        // 將 One Tap 取得的 JWT Token 登入到 Firebase Auth
+        if (window.FirebaseV18 && typeof window.FirebaseV18.signInWithToken === 'function') {
+            try {
+                await window.FirebaseV18.signInWithToken(response.credential);
+            } catch (fbErr) {
+                console.warn("Firebase credential sign-in failed:", fbErr);
+            }
+        }
+        const res = await window.FirebaseV18.findStudentByEmail(email);
+        if (!res || !res.exists) throw new Error(res.message || "查無學生資料，請確認此 Email 是否已在學生名單");
+        
         if (res.exists) {
             setLoginBusy("正在建立登入狀態...");
+            // 建立 Firestore session
+            const device = getDeviceInfo();
+            const browser = navigator.userAgent;
+            const sessId = await window.FirebaseV18.createSession(res.studentId, device, browser);
+            sessionToken = sessId || "";
             await completeLogin(res.studentId, res.name, email, res.className || res.class || "");
         } else {
             throw new Error(res.message || "查無學生資料，請確認此 Email 是否已在學生名單，或聯絡老師");

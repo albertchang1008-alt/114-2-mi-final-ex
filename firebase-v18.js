@@ -606,7 +606,16 @@
     }
   }
 
+  
+  async function signInWithToken(idToken) {
+    if (!init()) throw new Error("Firebase 尚未啟用");
+    var credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+    var res = await auth.signInWithCredential(credential);
+    return res.user;
+  }
+
   window.FirebaseV18 = {
+    signInWithToken: signInWithToken,
     isEnabled: isEnabled,
     init: init,
     currentUserEmail: currentUserEmail,
